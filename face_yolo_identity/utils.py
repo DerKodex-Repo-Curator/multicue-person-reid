@@ -72,3 +72,15 @@ def write_jsonl(path: str | Path, item: dict) -> None:
 def draw_label(img: np.ndarray, text: str, x: int, y: int) -> None:
     cv2.rectangle(img, (x, max(0, y - 22)), (x + max(120, 9 * len(text)), y), (0, 0, 0), -1)
     cv2.putText(img, text, (x + 4, y - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+
+
+def safe_round(value, ndigits: int = 4):
+    try:
+        if value is None:
+            return None
+        v = float(value)
+        if np.isnan(v) or np.isinf(v):
+            return None
+        return round(v, ndigits)
+    except Exception:
+        return None
