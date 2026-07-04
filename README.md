@@ -87,10 +87,18 @@ Since you only have your MacBook camera right now, start here.
 ### Step 1: Capture enrollment images
 
 ```bash
+python capture_enroll.py --person jose --samples 30 --start-delay 8 --delay 1.5
+```
+
+This automatic mode waits 8 seconds so you can step away from the laptop, then captures one sample every 1.5 seconds. Move slowly: front, slight left, slight right, closer, farther, different posture.
+
+Manual mode is still available if you are near the laptop:
+
+```bash
 python capture_enroll.py --person jose --samples 20 --manual
 ```
 
-Press **SPACE** to capture each image. Move your head/body a bit:
+Press **SPACE** to capture each image in manual mode. Move your head/body a bit:
 
 - front-facing,
 - slight left,

@@ -25,3 +25,14 @@ uv pip install -r requirements.txt
 ```
 
 `insightface` and `onnxruntime` are included in `requirements.txt` for real face embeddings. If they fail on your machine, the code can still fall back to non-face modes, but the intended install is the single requirements file.
+
+
+## Hands-free webcam enrollment
+
+Use automatic mode when you are not close enough to press SPACE:
+
+```bash
+python capture_enroll.py --person jose --samples 30 --start-delay 8 --delay 1.5
+```
+
+This waits 8 seconds, then captures one image every 1.5 seconds. Manual capture is still available with `--manual`.
