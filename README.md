@@ -26,6 +26,7 @@ cd /mnt/data/face_yolo_identity_project
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+# If using uv on macOS, see SETUP_MACOS.md and prefer Python 3.12
 ```
 
 If `insightface` or `onnxruntime` is hard to install, the project still runs with a weaker OpenCV face-crop fallback. For reliable face recognition, install InsightFace.
