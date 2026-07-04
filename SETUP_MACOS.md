@@ -7,7 +7,7 @@ uv python install 3.12
 uv venv --python 3.12 .venv
 source .venv/bin/activate
 python -c "import sys, platform; print(sys.version); print(platform.machine())"
-uv pip install -r requirements-minimal.txt
+uv pip install -r requirements.txt
 ```
 
 On an Apple Silicon Mac, `platform.machine()` should usually print:
@@ -24,4 +24,4 @@ For full face embeddings:
 uv pip install -r requirements.txt
 ```
 
-If `insightface` or `onnxruntime` is annoying, continue with `requirements-minimal.txt` first. You can still test YOLO, pose, geometry, silhouette, and same-person locking.
+`insightface` and `onnxruntime` are included in `requirements.txt` for real face embeddings. If they fail on your machine, the code can still fall back to non-face modes, but the intended install is the single requirements file.
