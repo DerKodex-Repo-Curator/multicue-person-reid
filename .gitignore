@@ -1,0 +1,19 @@
+# Local environments
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Runtime outputs and personal data
+outputs/*
+!outputs/.gitkeep
+known_people/*
+!known_people/.gitkeep
+
+# Downloaded model weights
+*.pt
+*.onnx
+*.npz
+
+# Logs
+*.log
