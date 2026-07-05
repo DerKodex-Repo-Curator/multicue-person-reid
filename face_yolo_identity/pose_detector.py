@@ -17,18 +17,30 @@ class PoseDetection(Detection):
 class PosePersonDetector:
     """YOLO pose detector returning person boxes plus COCO-17 keypoints."""
 
-    def __init__(self, weights: str = "yolov8n-pose.pt", conf: float = 0.35) -> None:
+    def __init__(self, weights: str = "yolov8n-pose.pt", conf: float = 0.35, tracker: str = "bytetrack.yaml") -> None:
         self.model = YOLO(weights)
         self.conf = conf
+        self.tracker = tracker
+        self._lap_warning_printed = False
 
     def track(self, frame: np.ndarray) -> list[PoseDetection]:
-        """Return pose detections without Ultralytics ByteTrack.
+        """Return pose detections using Ultralytics tracking when available.
 
-        Ultralytics track() depends on the optional `lap` package. For this
-        prototype we avoid that dependency and let IdentityLock fuse IoU, face,
-        body, silhouette, and geometry cues across frames.
+        This is the preferred path because ByteTrack/BOT-SORT can provide stable
+        track IDs. If `lap` is not installed, it falls back to detect() instead
+        of crashing.
         """
-        return self.detect(frame)
+        try:
+            result = self.model.track(frame, conf=self.conf, persist=True, tracker=self.tracker, verbose=False)[0]
+            return self._parse(result)
+        except ModuleNotFoundError as exc:
+            if exc.name != "lap":
+                raise
+            if not self._lap_warning_printed:
+                print("WARNING: lap is missing, falling back to YOLO-pose predict() without ByteTrack track IDs.")
+                print("Install with: uv pip install 'lap>=0.5.12'")
+                self._lap_warning_printed = True
+            return self.detect(frame)
 
     def detect(self, frame: np.ndarray) -> list[PoseDetection]:
         result = self.model.predict(frame, conf=self.conf, verbose=False)[0]

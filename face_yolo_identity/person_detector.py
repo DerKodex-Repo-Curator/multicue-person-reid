@@ -25,24 +25,44 @@ class Detection:
 
 
 class PersonDetector:
-    def __init__(self, weights: str, conf: float = 0.35, person_class_id: int = 0) -> None:
+    def __init__(self, weights: str, conf: float = 0.35, person_class_id: int = 0, tracker: str = "bytetrack.yaml") -> None:
         self.model = YOLO(weights)
         self.conf = conf
         self.person_class_id = person_class_id
+        self.tracker = tracker
+        self._lap_warning_printed = False
 
     def detect(self, frame: np.ndarray) -> list[Detection]:
         result = self.model.predict(frame, conf=self.conf, classes=[self.person_class_id], verbose=False)[0]
         return self._parse(result)
 
     def track(self, frame: np.ndarray) -> list[Detection]:
-        """Return person detections without Ultralytics ByteTrack.
+        """Return person detections using Ultralytics tracking when available.
 
-        Ultralytics' built-in track() imports the optional `lap` package. On macOS
-        + uv environments this frequently fails, and this project already has its
-        own IdentityLock for same-person continuity. So the default track() method
-        intentionally uses plain predict() and leaves track_id as None.
+        Ultralytics ByteTrack/BOT-SORT needs the optional `lap` package for
+        linear assignment. The project now includes `lap` in requirements.txt.
+        If a user's environment still lacks it, this method falls back to plain
+        YOLO predict() so the demo can run, but proper tracking is the default
+        path when dependencies are installed.
         """
-        return self.detect(frame)
+        try:
+            result = self.model.track(
+                frame,
+                conf=self.conf,
+                classes=[self.person_class_id],
+                persist=True,
+                tracker=self.tracker,
+                verbose=False,
+            )[0]
+            return self._parse(result)
+        except ModuleNotFoundError as exc:
+            if exc.name != "lap":
+                raise
+            if not self._lap_warning_printed:
+                print("WARNING: lap is missing, falling back to YOLO predict() without ByteTrack track IDs.")
+                print("Install with: uv pip install 'lap>=0.5.12'")
+                self._lap_warning_printed = True
+            return self.detect(frame)
 
     def _parse(self, result) -> list[Detection]:
         detections: list[Detection] = []

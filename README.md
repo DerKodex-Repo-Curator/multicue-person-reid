@@ -55,7 +55,7 @@ Use Python 3.12, not Python 3.13.
 ```bash
 cd /mnt/data/face_yolo_identity_project
 uv python install 3.12
-uv venv --python 3.12 .venv
+uv venv --python 3.12 --seed .venv
 source .venv/bin/activate
 uv pip install -r requirements.txt
 ```
@@ -234,6 +234,14 @@ Continuity Camera is not a problem. It is often sharper than the MacBook webcam,
 
 ### Note about `lap` / ByteTrack
 
-This project intentionally does **not** call Ultralytics `model.track()` by default because that path requires the optional `lap` package. On macOS/uv setups, `lap` often fails to install or Ultralytics tries to auto-install it with `pip`, which may not exist inside a uv-managed venv.
+This project uses Ultralytics `model.track()` by default so ByteTrack/BOT-SORT-style association can provide stable track IDs. That path requires the optional `lap` package, so `requirements.txt` now includes `lap>=0.5.12`.
 
-Instead, `run_camera.py` and `run_video.py` use YOLO/YOLO-pose `predict()` plus this project's own `IdentityLock` for same-person continuity. If you see an old error like `ModuleNotFoundError: No module named 'lap'`, update to this package version.
+Use a seeded uv environment so `pip` exists too:
+
+```bash
+uv venv --python 3.12 --seed .venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
+```
+
+If `lap` is still missing, the detector classes print a warning and fall back to YOLO `predict()` so the demo can run, but the intended/default path is Ultralytics tracking with `lap` installed.

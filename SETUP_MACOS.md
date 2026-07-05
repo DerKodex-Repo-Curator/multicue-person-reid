@@ -4,7 +4,7 @@ Use Python 3.12. PyTorch/Ultralytics may fail on Python 3.13, especially when th
 
 ```bash
 uv python install 3.12
-uv venv --python 3.12 .venv
+uv venv --python 3.12 --seed .venv
 source .venv/bin/activate
 python -c "import sys, platform; print(sys.version); print(platform.machine())"
 uv pip install -r requirements.txt
@@ -58,4 +58,21 @@ If you want to force the MacBook's built-in camera, disable Continuity Camera te
 
 ## `lap` / ByteTrack note
 
-The current version avoids Ultralytics ByteTrack and does not require `lap`. If an older copy crashes with `ModuleNotFoundError: No module named 'lap'`, download the latest zip or replace `model.track(...)` usage with `model.predict(...)` through the updated detector classes.
+The current version uses Ultralytics tracking again. `requirements.txt` includes `lap>=0.5.12`, which Ultralytics uses for ByteTrack/BOT-SORT linear assignment.
+
+Use `--seed` when creating the uv venv so `pip` is present too:
+
+```bash
+uv venv --python 3.12 --seed .venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
+```
+
+If you are fixing an existing environment instead of recreating it:
+
+```bash
+uv pip install pip
+uv pip install "lap>=0.5.12"
+```
+
+The code still has a fallback to `predict()` if `lap` is missing, but that is only a safety net. The intended path is Ultralytics `model.track()`.

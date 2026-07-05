@@ -8,3 +8,8 @@ PyYAML>=6.0
 # Optional but strongly recommended for real face embeddings:
 insightface>=0.7.3
 onnxruntime>=1.17.0
+
+# Required by Ultralytics ByteTrack/BOT-SORT tracking.
+lap>=0.5.12
+# Keeps Ultralytics auto-update hooks from failing inside uv-created venvs.
+pip>=24.0
