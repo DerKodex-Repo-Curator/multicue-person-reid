@@ -204,3 +204,29 @@ That is not technically honest because low-resolution CCTV faces may not contain
 ## Suggested next upgrade
 
 Once the MacBook camera version works, the next serious upgrade is replacing the lightweight silhouette cue with real person segmentation or a proper person ReID model. For now, this project is intentionally lightweight and testable on your laptop camera.
+
+
+## Choosing MacBook camera vs iPhone Continuity Camera
+
+On macOS, an iPhone Continuity Camera can appear as a normal OpenCV camera. It may become camera index `0`, which means the project will use the iPhone instead of the built-in MacBook camera.
+
+List available camera indexes:
+
+```bash
+python list_cameras.py
+```
+
+Preview them one by one:
+
+```bash
+python list_cameras.py --preview
+```
+
+Then pass the camera index explicitly:
+
+```bash
+python capture_enroll.py --person jose --camera 1 --samples 30 --start-delay 8 --delay 1.5
+python run_camera.py --camera 1 --known-db outputs/known_faces.npz
+```
+
+Continuity Camera is not a problem. It is often sharper than the MacBook webcam, so it can be useful for enrollment. But if the goal is to simulate CCTV-distance footage, move farther away, lower the resolution, or test later with actual CCTV/video files.

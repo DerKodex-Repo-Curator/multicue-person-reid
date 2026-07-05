@@ -36,3 +36,21 @@ python capture_enroll.py --person jose --samples 30 --start-delay 8 --delay 1.5
 ```
 
 This waits 8 seconds, then captures one image every 1.5 seconds. Manual capture is still available with `--manual`.
+
+
+## Camera selection on macOS
+
+If your iPhone Continuity Camera is active, OpenCV may use it as camera index `0`. This is normal. To see which indexes work:
+
+```bash
+python list_cameras.py --preview
+```
+
+Then use the chosen index explicitly:
+
+```bash
+python capture_enroll.py --person jose --camera 1 --samples 30 --start-delay 8 --delay 1.5
+python run_camera.py --camera 1 --known-db outputs/known_faces.npz
+```
+
+If you want to force the MacBook's built-in camera, disable Continuity Camera temporarily or choose the FaceTime camera index found by `list_cameras.py`.
