@@ -103,3 +103,15 @@ For smaller display window but still readable text:
 ```bash
 uv run run_camera.py --camera 1 --known-db outputs/known_faces.npz --font-scale 1.4 --display-scale 0.75
 ```
+
+
+## Smart re-enrollment
+
+If the recognition is weak, re-enroll with quality-gated automatic capture instead of a fixed timer:
+
+```bash
+uv run capture_enroll.py --person jose --camera 1 --samples 50 --clear-existing --start-delay 8 --font-scale 1.2
+uv run enroll.py --known-dir known_people --db outputs/known_faces.npz
+```
+
+The capture window will only save frames when the face is detected, large enough, sharp enough, reasonably exposed, and not too similar to already-saved samples. Move slowly and vary distance/angle.

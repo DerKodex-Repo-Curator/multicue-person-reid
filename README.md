@@ -86,25 +86,38 @@ Since you only have your MacBook camera right now, start here.
 
 ### Step 1: Capture enrollment images
 
-```bash
-python capture_enroll.py --person jose --samples 30 --start-delay 8 --delay 1.5
-```
+The recommended enrollment mode is now **smart automatic capture**. It watches the camera and saves only useful samples: a face must be detected, large enough, sharp enough, reasonably exposed, and not too similar to samples already saved.
 
-This automatic mode waits 8 seconds so you can step away from the laptop, then captures one sample every 1.5 seconds. Move slowly: front, slight left, slight right, closer, farther, different posture.
-
-Manual mode is still available if you are near the laptop:
+For a clean re-enrollment:
 
 ```bash
-python capture_enroll.py --person jose --samples 20 --manual
+python capture_enroll.py --person jose --camera 1 --samples 50 --clear-existing --start-delay 8
 ```
 
-Press **SPACE** to capture each image in manual mode. Move your head/body a bit:
+Then step back and move slowly. Try to give it variety:
 
-- front-facing,
-- slight left,
-- slight right,
-- closer/farther,
-- different lighting if possible.
+- center/front-facing,
+- slight left and slight right,
+- closer and farther,
+- neutral and slight smile,
+- normal standing posture.
+
+The overlay shows why it is saving or rejecting a frame, such as `good sample`, `too blurry`, `face too small`, or `too similar`.
+
+Useful options:
+
+```bash
+# Bigger overlay text
+python capture_enroll.py --person jose --camera 1 --samples 50 --font-scale 1.2
+
+# Old fixed timer behavior, no quality gate
+python capture_enroll.py --person jose --camera 1 --samples 30 --fixed-auto --delay 1.5
+
+# Manual mode if you are near the keyboard
+python capture_enroll.py --person jose --camera 1 --samples 20 --manual
+```
+
+Press **SPACE** to force-save the current frame, even in smart mode. Press **Q** to quit.
 
 This saves images to:
 
