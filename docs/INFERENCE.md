@@ -1,8 +1,12 @@
 # Inference guide
 
+Inference is the live or video-time process of detecting people and labeling known identities.
+
 ## Automatic identity mode
 
-Locking is no longer required to determine a known person. When you provide known databases, the live camera script labels matching candidates automatically.
+Manual locking is not required to identify known people.
+
+When known databases are provided, each candidate is periodically matched against the face and body databases:
 
 ```bash
 uv run run_camera.py \
@@ -13,27 +17,35 @@ uv run run_camera.py \
   --imgsz 416
 ```
 
-The system runs known-person matching every few frames, controlled by:
+Matching frequency is controlled by:
 
 ```bash
 --identity-every 5
 ```
 
-Lower values are more responsive but slower. Higher values are faster but labels update less often.
+Lower values update labels more often but reduce FPS. Higher values improve FPS but labels refresh more slowly.
 
 ## Optional focus lock
 
-Manual lock still exists, but it now means **focus tracking**, not identity recognition.
+Manual lock is now focus mode only.
 
-Press `L` when you want to keep following one selected target across frames. This is useful for experiments with continuity scoring, but it is not required for known-person labels.
+Use it when you want to inspect one target’s continuity scores across frames. It is not required for known-person labels.
 
-Automatic focus lock is off by default. Enable it only when desired:
+Controls:
+
+- `L`: lock/focus current candidate
+- `R`: reset lock/focus state
+- `S`: save current frame/person/face crop
+- `D`: toggle debug panel
+- `Q`: quit
+
+Enable automatic focus lock after a strong known-person match:
 
 ```bash
 --auto-lock
 ```
 
-Disable known-person matching entirely:
+Disable known-person matching:
 
 ```bash
 --no-auto-identify
@@ -41,31 +53,64 @@ Disable known-person matching entirely:
 
 ## Pose rendering
 
-YOLO-pose now draws connected skeleton lines and larger joints instead of only small joint dots. This makes body geometry easier to debug visually.
+YOLO-pose should render:
+
+- connected skeleton lines
+- prominent joints
+- person boxes
+- identity/debug labels
+
+If only tiny dots appear, the rendering path needs to be checked because connected skeletons are part of the current expected UI.
 
 ## Threaded camera
 
-The live camera script reads frames on a background thread by default:
+Threaded capture is enabled by default:
 
 ```bash
 --threaded-camera
 ```
 
-This keeps the preview fresher when face/body inference takes longer than the camera frame interval. You can disable it for debugging:
+It keeps the preview fresher when inference is slower than the camera frame rate. Disable it only for debugging:
 
 ```bash
 --no-threaded-camera
 ```
 
-## Controls
+## Performance presets
 
-- `L`: optional manual focus lock
-- `R`: reset lock/focus state
-- `S`: save frame/person/face crop
-- `D`: toggle debug panel
-- `Q`: quit
+Balanced:
 
-## Debug output
+```bash
+uv run run_camera.py --camera 0 --known-db outputs/known_faces.npz --known-body-db outputs/known_bodies.npz --device auto --imgsz 416 --face-det-size 320
+```
+
+Faster:
+
+```bash
+uv run run_camera.py --camera 0 --known-db outputs/known_faces.npz --known-body-db outputs/known_bodies.npz --device auto --imgsz 320 --identity-every 10 --no-pose
+```
+
+More accurate:
+
+```bash
+uv run run_camera.py --camera 0 --known-db outputs/known_faces.npz --known-body-db outputs/known_bodies.npz --device auto --imgsz 640 --face-det-size 640 --identity-every 1
+```
+
+## Overlay readability
+
+If text is too small:
+
+```bash
+--font-scale 1.8
+```
+
+If the display window is too large:
+
+```bash
+--display-scale 0.75
+```
+
+## Metadata and plots
 
 Live metadata is written to:
 
@@ -73,8 +118,14 @@ Live metadata is written to:
 outputs/camera_run/metadata.jsonl
 ```
 
-Plot scores afterward:
+Plot scores after a run:
 
 ```bash
 uv run python scripts/plot_run_metadata.py outputs/camera_run/metadata.jsonl --out outputs/camera_run/debug_scores.png
 ```
+
+## Identity interpretation
+
+Treat labels as confidence-based outputs, not absolute truth.
+
+A good face match is strong evidence. A body/ReID match is weaker and should be interpreted as continuity or same-session re-identification, especially when clothing dominates.

@@ -1,8 +1,8 @@
-# macOS setup
+# macOS / Apple Silicon setup
 
-This project works on macOS with Python 3.12. On Apple Silicon, YOLO can use PyTorch MPS through `--device auto` or `--device mps`.
+This setup is optimized for the current Apple Silicon development path. Platform-agnostic cleanup is a later project priority.
 
-## Recommended install
+## 1. Use Python 3.12
 
 ```bash
 uv python install 3.12
@@ -11,79 +11,77 @@ source .venv/bin/activate
 uv pip install -r requirements.txt
 ```
 
-`--seed` is recommended because Ultralytics may try to use `pip` for optional dependency checks. The project requirements also include `lap`, which is needed by Ultralytics ByteTrack/BOT-SORT tracking.
-
-## Verify important packages
+Verify key dependencies:
 
 ```bash
+uv run python -c "import pip, lap; print('pip ok'); print('lap ok')"
 uv run python -c "import torch; print(torch.backends.mps.is_available())"
-uv run python -c "import lap; print('lap ok')"
-uv run python -c "import onnxruntime as ort; print(ort.get_available_providers())"
 ```
 
-If MPS prints `True`, YOLO should use Apple Silicon GPU acceleration when you run:
-
-```bash
-uv run run_camera.py --camera 0 --device auto
-```
-
-If ONNX Runtime lists `CoreMLExecutionProvider`, InsightFace can prefer it with:
-
-```bash
-uv run run_camera.py --camera 0 --face-provider coreml
-```
-
-If CoreML is not listed, InsightFace uses CPU. That is normal for many environments.
-
-## Camera selection
+## 2. Choose camera
 
 ```bash
 uv run list_cameras.py --preview
 ```
 
-Then pass the camera index:
+Use the selected index with `--camera`.
+
+## 3. Unified enrollment
 
 ```bash
-uv run run_camera.py --camera 1
+uv run capture_unified_enroll.py \
+  --person jose \
+  --camera 0 \
+  --bucket-target 8 \
+  --max-samples 72 \
+  --clear-existing \
+  --start-delay 6
 ```
 
-## Performance tips
+Build databases:
+
+```bash
+uv run enroll.py --known-dir known_people --db outputs/known_faces.npz
+uv run enroll_body.py --known-dir known_people --db outputs/known_bodies.npz
+```
+
+## 4. Run live inference
+
+```bash
+uv run run_camera.py \
+  --camera 0 \
+  --known-db outputs/known_faces.npz \
+  --known-body-db outputs/known_bodies.npz \
+  --device auto \
+  --imgsz 416 \
+  --face-det-size 320 \
+  --font-scale 1.6
+```
+
+## 5. Performance presets
 
 Faster:
 
 ```bash
-uv run run_camera.py --camera 0 --device auto --imgsz 320 --identity-every 10 --no-pose
-```
-
-Balanced:
-
-```bash
-uv run run_camera.py --camera 0 --device auto --imgsz 416 --face-det-size 320
+uv run run_camera.py --camera 0 --known-db outputs/known_faces.npz --known-body-db outputs/known_bodies.npz --device auto --imgsz 320 --identity-every 10 --no-pose
 ```
 
 More accurate:
 
 ```bash
-uv run run_camera.py --camera 0 --device auto --imgsz 640 --face-det-size 640 --identity-every 1
+uv run run_camera.py --camera 0 --known-db outputs/known_faces.npz --known-body-db outputs/known_bodies.npz --device auto --imgsz 640 --face-det-size 640 --identity-every 1
 ```
 
-## Common fixes
+## 6. CoreML fallback
 
-If `lap` is missing:
+If InsightFace CoreML fails, force CPU for face recognition:
 
 ```bash
-uv pip install pip
-uv pip install "lap>=0.5.12"
+--face-provider cpu
 ```
 
-If text is too small:
+YOLO can still run on MPS through:
 
 ```bash
---font-scale 1.8
-```
-
-If the preview window is too large:
-
-```bash
---display-scale 0.75
+--device auto
 ```

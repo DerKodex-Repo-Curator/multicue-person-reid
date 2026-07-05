@@ -1,36 +1,14 @@
 # Enrollment guide
 
-Enrollment now has a **unified face + body/ReID flow**. This is the preferred path because the face and body samples are captured at the same distance and under the same camera conditions.
+Enrollment creates the known-person databases used during inference. The preferred flow is now **unified face + body/ReID enrollment**.
 
-## Recommended unified enrollment
+## Why unified enrollment
 
-```bash
-uv run capture_unified_enroll.py \
-  --person jose \
-  --camera 0 \
-  --samples 36 \
-  --clear-existing \
-  --start-delay 6
-```
+Earlier versions had separate face and body capture flows. That caused a data-quality problem: `front`, `close`, and `far` could mean different distances and poses across the two modalities.
 
-Then build both databases:
+Unified enrollment solves that by saving both face and body samples from the same live session.
 
-```bash
-uv run enroll.py --known-dir known_people --db outputs/known_faces.npz
-uv run enroll_body.py --known-dir known_people --db outputs/known_bodies.npz
-```
-
-Unified enrollment saves:
-
-```text
-known_people/<person>/face/          # face crops when a face is visible
-known_people/<person>/body/          # full person crops for ReID/body cues
-known_people/<person>/unified_frames # full-frame evidence/debug samples
-```
-
-## Accuracy-focused sample counts
-
-Fast capture means you can safely collect more samples, but the goal is **balanced diversity**, not raw volume. The improved unified enrollment now supports per-bucket targets:
+## Recommended command
 
 ```bash
 uv run capture_unified_enroll.py \
@@ -42,47 +20,112 @@ uv run capture_unified_enroll.py \
   --start-delay 6
 ```
 
-`--bucket-target 8` means the system tries to save 8 accepted samples for each bucket: FRONT, TURN_LEFT, TURN_RIGHT, CLOSE, FAR, and BACK. That is roughly 48 useful samples, but the `--max-samples` cap prevents the session from running forever if one bucket is hard to satisfy.
+Then build both databases:
 
-The older `--samples` flag still works. It is interpreted as a desired total and converted into an approximate per-bucket target.
+```bash
+uv run enroll.py --known-dir known_people --db outputs/known_faces.npz
+uv run enroll_body.py --known-dir known_people --db outputs/known_bodies.npz
+```
+
+## Output structure
+
+Unified capture writes:
+
+```text
+known_people/<person>/face/             # face crops when a usable face is visible
+known_people/<person>/body/             # person crops for body/ReID matching
+known_people/<person>/unified_frames/   # full-frame evidence/debug captures
+```
+
+These folders contain sensitive biometric-like data. They are ignored by Git.
 
 ## Buckets
 
-The unified flow tries to balance these buckets:
+The enrollment UI tries to collect balanced samples for:
 
-- `FRONT` — face roughly frontal
-- `TURN_LEFT` — actual head/body turn left
-- `TURN_RIGHT` — actual head/body turn right
-- `CLOSE` — person closer to camera
-- `FAR` — person farther from camera
-- `BACK` — back-facing or no-face body sample
+- `FRONT`
+- `TURN_LEFT`
+- `TURN_RIGHT`
+- `CLOSE`
+- `FAR`
+- `BACK`
 
-Left/right is no longer just where the person appears in the frame. The face flow estimates an approximate yaw from InsightFace landmarks and asks you to turn farther if the detected angle is too small.
+`BACK` is for body/ReID only. It should not produce face samples because there is no visible face.
 
-## Why unified enrollment is preferred
+## Face angle guidance
 
-Separate face/body enrollment can accidentally collect different distances for `close`, `front`, and `far`. Unified enrollment records both modalities during the same pass, so the body/ReID and face databases are more aligned.
+Left/right should mean the person actually turned, not merely moved to the left or right side of the frame.
 
-## Legacy separate flows
+The unified enrollment flow estimates approximate head yaw from face landmarks when a face is visible. If the turn is too weak, the UI should ask for stronger motion, such as:
 
-The old separate scripts still exist for experiments:
-
-```bash
-uv run capture_enroll.py --person jose --camera 0 --samples 20 --clear-existing --start-delay 8
-uv run capture_body_enroll.py --person jose --camera 0 --samples 24 --clear-existing --start-delay 8
+```text
+turn further left
+turn further right
 ```
 
-Prefer `capture_unified_enroll.py` unless you have a reason to isolate face-only or body-only samples.
+This is still an approximation. It is good enough for enrollment guidance, but it should not be treated as a precise biometric head-pose measurement.
+
+## Sample counts
+
+Fast capture makes higher sample counts possible, but raw volume is not the goal. A better target is **balanced diversity**.
+
+Quick test:
+
+```bash
+uv run capture_unified_enroll.py --person jose --camera 0 --samples 24 --clear-existing --start-delay 6
+```
+
+Normal enrollment:
+
+```bash
+uv run capture_unified_enroll.py --person jose --camera 0 --samples 36 --clear-existing --start-delay 6
+```
+
+Accuracy-focused enrollment:
+
+```bash
+uv run capture_unified_enroll.py --person jose --camera 0 --bucket-target 8 --max-samples 72 --clear-existing --start-delay 6
+```
+
+Research/testing enrollment:
+
+```bash
+uv run capture_unified_enroll.py --person jose --camera 0 --bucket-target 10 --max-samples 96 --clear-existing --start-delay 6
+```
+
+Review saved crops afterward. More samples can hurt if they are blurry, duplicate, badly cropped, or mislabeled.
+
+## Quality gates
+
+The unified flow can reject samples because of:
+
+- no person detected
+- body crop too small
+- face too small for face enrollment
+- face too blurry
+- pose quality too low
+- duplicate/near-duplicate sample
+- bucket already has enough samples
+- angle not sufficient for a turn bucket
+
+Useful tuning flags:
+
+```bash
+--min-body-height 240
+--min-face-size 46
+--min-sharpness 32
+--min-pose-quality 0.16
+--duplicate-threshold 0.985
+--delay 0.45
+```
 
 ## Sound prompts
 
-Enrollment supports sound prompts so you can stand far from the screen.
-
-Useful flags:
+Sound prompts are useful when standing far from the screen.
 
 ```bash
---beep-only
---no-sound
+--beep-only   # simple beeps
+--no-sound    # silent mode
 ```
 
 Controls:
@@ -93,4 +136,25 @@ Controls:
 
 ## Completion behavior
 
-When every bucket reaches its target, or when `--max-samples` is reached, the unified enrollment window shows a final `DONE` screen. By default it auto-closes after a few seconds. Use `--done-hold -1` if you want it to wait for `Q`. This avoids the previous abrupt-close/hang feeling when enrollment finished while camera resources were still settling.
+Enrollment finishes when either:
+
+1. All buckets reach the target, or
+2. `--max-samples` is reached.
+
+When done, the window shows a final status and auto-closes after `--done-hold` seconds.
+
+```bash
+--done-hold 3     # default
+--done-hold -1    # wait for Q instead of auto-closing
+```
+
+## Legacy scripts
+
+These are still available for experiments:
+
+```bash
+uv run capture_enroll.py --person jose --camera 0 --samples 20 --clear-existing --start-delay 8
+uv run capture_body_enroll.py --person jose --camera 0 --samples 24 --clear-existing --start-delay 8
+```
+
+Prefer `capture_unified_enroll.py` for normal use.

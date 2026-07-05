@@ -1,8 +1,24 @@
 # Adaptive enrollment
 
-The faster threaded capture path makes it practical to collect more samples, but more images only help when they add useful variation.
+Adaptive enrollment uses the faster threaded capture path to collect more useful samples without flooding the database with redundant frames.
 
-`capture_unified_enroll.py` now supports balanced, accuracy-focused enrollment:
+## Fixed samples vs bucket targets
+
+A fixed sample count says:
+
+```text
+save about N accepted samples total
+```
+
+A bucket target says:
+
+```text
+save enough useful samples for each pose/distance bucket
+```
+
+The bucket-target approach is better for accuracy because it prevents the dataset from being dominated by easy front-facing frames.
+
+## Recommended command
 
 ```bash
 uv run capture_unified_enroll.py \
@@ -14,61 +30,100 @@ uv run capture_unified_enroll.py \
   --start-delay 6
 ```
 
-## How it stops
+`--bucket-target 8` aims for 8 accepted samples per bucket:
 
-Enrollment now stops when either condition is true:
+```text
+FRONT       8
+TURN_LEFT   8
+TURN_RIGHT  8
+CLOSE       8
+FAR         8
+BACK        8
+```
 
-1. Every bucket reaches the target count.
+That is about 48 useful accepted samples, with `--max-samples 72` acting as a safety cap.
+
+## Stop conditions
+
+Enrollment stops when:
+
+1. Every bucket reaches its target, or
 2. `--max-samples` is reached.
 
-This is better than saving a raw fixed number of screenshots because the system can reject blurry, duplicate, or weak-pose frames without prematurely finishing the enrollment.
-
-## Buckets
-
-The current unified buckets are:
-
-- `FRONT`
-- `TURN_LEFT`
-- `TURN_RIGHT`
-- `CLOSE`
-- `FAR`
-- `BACK`
-
-For example, `--bucket-target 8` aims for roughly 48 useful accepted samples total.
+This prevents endless capture when one bucket is hard to satisfy, such as `BACK` or `FAR` in a cramped room.
 
 ## Duplicate rejection
 
-The enrollment loop still compares new samples against previous accepted samples. If a frame is too similar, it is rejected even if the camera is producing frames quickly. This lets higher frame rate improve responsiveness without flooding the dataset with near-identical samples.
+Higher FPS should improve responsiveness, not create a dataset full of near-identical images. New samples are compared against accepted samples and can be rejected as duplicates.
 
-Useful tuning knobs:
+Useful flag:
 
 ```bash
 --duplicate-threshold 0.985
---delay 0.35
---min-sharpness 32
---min-pose-quality 0.16
 ```
 
-Lowering `--duplicate-threshold` makes the system stricter about similarity. Raising it accepts more near-duplicates.
+Lower values are stricter. Higher values accept more similar samples.
 
-## Recommended sample sizes
+## Quality vs quantity
 
-For a quick local smoke test:
+More samples help when they add variation:
+
+- different distance
+- frontal face
+- left/right turn
+- back/body view
+- slight expression changes
+- mild pose changes
+- consistent lighting/camera condition
+
+More samples can hurt when they add noise:
+
+- blurry frames
+- bad face crops
+- partial body crops
+- wrong person in frame
+- extreme shadows
+- duplicate frames
+- mislabeled turn direction
+
+## Suggested presets
+
+Fast smoke test:
 
 ```bash
 --samples 18
 ```
 
-For a normal local enrollment:
+Normal local enrollment:
 
 ```bash
 --samples 36
 ```
 
-For a stronger person-specific enrollment:
+Accuracy-focused:
 
 ```bash
 --bucket-target 8 --max-samples 72
 ```
 
-For research/testing, you can increase the target further, but review the saved crops afterward. Low-quality extra samples can make the database noisier.
+Extended testing:
+
+```bash
+--bucket-target 10 --max-samples 96
+```
+
+## Practical capture advice
+
+Move slowly. Give the system time to judge sharpness, pose, and duplicates.
+
+A good session pattern:
+
+1. Stand front-facing.
+2. Turn head/body left until prompted sample is accepted.
+3. Turn head/body right until prompted sample is accepted.
+4. Step closer.
+5. Step farther.
+6. Turn around for back/body samples.
+7. Return to front for remaining missing buckets.
+
+Use the bucket panel as the source of truth for what is still missing.

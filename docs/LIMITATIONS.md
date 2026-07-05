@@ -1,25 +1,66 @@
 # Limitations
 
-## Low-resolution CCTV
+This project should be evaluated as a research/prototype system, not a guaranteed biometric identification system.
 
-At long distance, faces may occupy too few pixels for reliable face recognition. Enlarging a tiny face crop does not restore missing identity information.
+## Low-resolution distant cameras
 
-## Body shape is not a unique biometric
+At long distance, faces may occupy too few pixels for reliable recognition. Enlarging a tiny face crop does not restore missing information.
 
-Body geometry, silhouette, and clothing cues are useful for same-session tracking and ReID experiments, but they are not as unique or stable as a clear face.
+Rough intuition:
 
-## Clothing dominates ReID
+```text
+Very tiny face crop: not useful for identity
+Moderate face crop: possible but fragile
+Clear large face crop: much stronger
+```
 
-A body/ReID database can overfit to clothing. It works best for same-day/event tracking. It is weaker for recognizing a person weeks later after outfit changes.
+## Body/ReID is weaker than face identity
 
-## Camera geometry matters
+Body/ReID features can help with same-session continuity, but they are not as unique or stable as a clear face.
 
-High-angle CCTV, perspective distortion, lens distortion, motion blur, compression, and lighting all affect body proportions and silhouette.
+They are affected by:
 
-## Correct framing
+- clothing
+- bags
+- pose
+- camera angle
+- shadows
+- perspective distortion
+- lens distortion
+- compression
+- partial occlusion
 
-A defensible project claim is:
+## Body shape is not a stable biometric here
+
+The project extracts approximate body geometry and silhouette cues, but this is not a precise body-measurement system. Camera perspective can make the same person appear taller, shorter, wider, or narrower.
+
+Use body/geometry as supporting evidence, not proof.
+
+## Head yaw is approximate
+
+Enrollment uses face landmarks to estimate whether the person turned left or right enough. This is guidance for sample diversity, not a precise 3D head-pose estimator.
+
+## Back-facing samples are body-only
+
+Back-facing samples are useful for body/ReID continuity. They are not useful for face recognition because no face embedding can be extracted.
+
+## Automatic labels can be wrong
+
+Automatic identity mode is useful because pressing `L` should not be required. However, automatic labels still depend on thresholds and cue quality.
+
+The UI and metadata should distinguish:
+
+- strong face-confirmed identity
+- body/ReID match
+- focused tracking
+- unknown/low-confidence detection
+
+## Defensible project claim
+
+A good claim is:
 
 > Multi-cue person tracking and re-identification for low-resolution camera footage, using face recognition when available and body/geometry cues for continuity.
 
-Avoid claiming guaranteed identity from distant CCTV frames.
+Avoid claiming:
+
+> Guaranteed identity recognition from distant CCTV footage.

@@ -1,32 +1,55 @@
 # Privacy and ethics
 
-This project processes biometric-like information such as face embeddings and body/ReID features. Treat outputs as sensitive.
+This project handles biometric-like information. Treat captured images, face embeddings, and body/ReID databases as sensitive.
 
 ## Local-first design
 
-The code is intended to run locally. Databases are written to local `.npz` files such as:
+The project is intended to run locally. It writes databases such as:
 
 ```text
 outputs/known_faces.npz
 outputs/known_bodies.npz
 ```
 
-Do not upload these files or captured crops unless you have permission.
+and samples such as:
+
+```text
+known_people/<person>/face/
+known_people/<person>/body/
+known_people/<person>/unified_frames/
+```
+
+Do not upload or share these files unless you have permission from the enrolled people.
 
 ## Consent
 
-Use enrollment only with people who know they are being enrolled and understand how the samples will be used.
+Only enroll people who know they are being enrolled and understand how the samples will be used.
 
-## Avoid overclaiming
+## Minimize stored data
 
-The system should distinguish between:
+For demos and testing, delete old samples and output runs when they are no longer needed.
+
+```bash
+rm -rf known_people/<person>
+rm -rf outputs/camera_run
+rm -f outputs/known_faces.npz outputs/known_bodies.npz
+```
+
+## Avoid hidden surveillance claims
+
+This prototype is for local experimentation and research. It should not be described as a guaranteed surveillance identification system.
+
+## Do not overclaim identity
+
+Separate these concepts clearly:
 
 - identity confirmed by a usable face match
-- same-person tracking across frames
-- low-confidence or unknown detections
+- likely same-person tracking across frames
+- body/ReID similarity
+- unknown or low-confidence detection
 
-This distinction is important because distant/low-quality camera footage can be misleading.
+This distinction matters because low-quality footage can be misleading.
 
-## Data minimization
+## Git hygiene
 
-For demos, delete old `known_people/` samples and `outputs/` runs when they are no longer needed.
+The repository should not commit personal sample images, embeddings, output runs, videos, or generated model files. The `.gitignore` should keep private/generated artifacts out of history.

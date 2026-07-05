@@ -1,58 +1,98 @@
 # Apple Silicon optimization
 
-The project now has Apple Silicon-friendly runtime options.
+The current optimization line prioritizes Apple Silicon/macOS performance first. Platform-agnostic cleanup is intentionally later.
+
+## Runtime split
+
+The project uses different acceleration paths for different workloads:
+
+```text
+YOLO / YOLO-pose  -> PyTorch MPS when available
+InsightFace       -> ONNX Runtime CoreML MLProgram when available, CPU fallback
+Camera capture    -> threaded reader to reduce UI staleness
+```
 
 ## YOLO on MPS
 
-`run_camera.py --device auto` tries to use PyTorch MPS when available. MPS is Apple's Metal backend for PyTorch and is usually much faster than CPU for YOLO.
+`--device auto` should prefer `mps` on Apple Silicon if PyTorch exposes it.
 
-Check the startup line:
+Check startup output for something like:
 
 ```text
-Runtime: AppleSilicon=True, YOLO device=mps, MPS=True
+YOLO device=mps, MPS=True
 ```
 
-If MPS is unstable, force CPU:
+Force MPS:
+
+```bash
+uv run run_camera.py --camera 0 --device mps
+```
+
+Force CPU for debugging:
 
 ```bash
 uv run run_camera.py --camera 0 --device cpu
 ```
 
-## Faster defaults
+## InsightFace and CoreML
 
-The live camera path uses defaults that are meant to be responsive:
+InsightFace uses ONNX Runtime. Earlier CoreML attempts failed with dynamic/static shape mismatches in SCRFD. The current line uses fixed-shape CoreML model copies when possible.
 
-```bash
---camera-width 1280 --camera-height 720 --imgsz 416 --face-det-size 320 --identity-every 5
-```
-
-Increase accuracy at the cost of FPS:
+Default:
 
 ```bash
-uv run run_camera.py --camera 0 --imgsz 640 --face-det-size 640 --identity-every 1
+--face-provider auto
 ```
 
-Increase FPS at the cost of small-person accuracy:
+Force CPU:
 
 ```bash
-uv run run_camera.py --camera 0 --imgsz 320 --face-det-size 320 --identity-every 10 --no-pose
+--face-provider cpu
 ```
-
-## InsightFace / CoreML
-
-InsightFace runs through ONNX Runtime. On Apple Silicon, `--face-provider auto`
-uses CoreML's MLProgram format with fixed-shape Buffalo-L model copies. The
-fixed shapes avoid SCRFD's dynamic-input/output-metadata mismatch at detector
-sizes such as 320. The generated copies are cached under
-`~/.insightface/models/`; the downloaded originals are not modified.
 
 Force CoreML preference:
 
 ```bash
-uv run run_camera.py --camera 0 --face-provider coreml
+--face-provider coreml
 ```
 
-If CoreML is unavailable or fails at runtime, the code falls back to CPU.
+If CoreML fails at runtime, the face embedder should fall back to CPU while YOLO can continue using MPS.
+
+## Speed knobs
+
+Camera resolution:
+
+```bash
+--camera-width 1280 --camera-height 720
+```
+
+YOLO inference size:
+
+```bash
+--imgsz 320   # faster
+--imgsz 416   # balanced
+--imgsz 640   # more accurate
+```
+
+Face detector size:
+
+```bash
+--face-det-size 320   # faster
+--face-det-size 640   # better for smaller faces
+```
+
+Known-person matching interval:
+
+```bash
+--identity-every 10   # faster
+--identity-every 1    # more responsive but slower
+```
+
+Disable pose for FPS:
+
+```bash
+--no-pose
+```
 
 ## Practical presets
 
@@ -73,3 +113,16 @@ More accurate:
 ```bash
 uv run run_camera.py --camera 0 --known-db outputs/known_faces.npz --known-body-db outputs/known_bodies.npz --device auto --imgsz 640 --face-det-size 640 --identity-every 1
 ```
+
+## Why FPS can still be low
+
+Even with Apple Silicon acceleration, FPS can drop because:
+
+- YOLO-pose is heavier than detection-only YOLO.
+- InsightFace face detection/embedding is expensive.
+- Matching too often reduces FPS.
+- High camera resolution increases preprocessing cost.
+- Debug overlays and metadata logging add overhead.
+- CoreML fallback to CPU may occur silently after provider errors.
+
+Start with the faster preset, then increase accuracy one knob at a time.
