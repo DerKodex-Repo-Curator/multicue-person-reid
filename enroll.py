@@ -16,7 +16,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Enroll known people from folders of face/person images.")
     parser.add_argument("--known-dir", default="known_people", help="Folder with one subfolder per person.")
     parser.add_argument("--db", default="outputs/known_faces.npz", help="Output database path.")
-    parser.add_argument("--face-provider", default="auto", choices=["auto", "cpu", "coreml"], help="InsightFace ONNX provider. auto/cpu uses CPU; coreml is experimental on macOS.")
+    parser.add_argument("--face-provider", default="auto", choices=["auto", "cpu", "coreml"], help="InsightFace ONNX provider. auto uses fixed-shape CoreML on Apple Silicon and CPU elsewhere.")
     parser.add_argument("--face-det-size", type=int, default=320, help="InsightFace detector size.")
     args = parser.parse_args()
 

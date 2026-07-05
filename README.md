@@ -11,7 +11,7 @@ A local prototype for person detection, tracking, face recognition, and body/ReI
 - Automatically attempts known-person identity matching during inference.
 - Allows manual lock with `L` when you want to select a target yourself.
 - Supports Apple Silicon optimization through PyTorch MPS for YOLO when available.
-- Uses InsightFace for face embeddings and uses CPU for InsightFace by default because ONNX Runtime CoreML can fail on SCRFD/InsightFace dynamic outputs; CoreML is available only as an experimental explicit option.
+- Uses InsightFace with a fixed-shape CoreML MLProgram fast path on Apple Silicon, with automatic CPU fallback.
 
 ## Install
 
@@ -111,9 +111,9 @@ Locking means "follow this selected target across future frames." It does not au
 --device cpu           # force CPU
 --imgsz 320            # faster YOLO
 --imgsz 640            # more accurate YOLO
---face-provider auto   # default: CPU for InsightFace, safest on macOS
+--face-provider auto   # CoreML MLProgram on Apple Silicon; CPU elsewhere
 --face-provider cpu    # force CPU explicitly
---face-provider coreml # experimental; may fail on InsightFace/SCRFD dynamic shapes
+--face-provider coreml # force the fixed-shape CoreML path when available
 --face-det-size 320    # faster face detection
 --face-det-size 640    # better for small faces
 --identity-every 5     # known-person matching interval
@@ -142,4 +142,8 @@ A clear face can support identity. Low-resolution distant footage often cannot. 
 
 ## CoreML note
 
-The default `--face-provider auto` is intentionally CPU for InsightFace. Some macOS ONNX Runtime builds expose `CoreMLExecutionProvider`, but InsightFace/SCRFD may crash with a static/dynamic output-shape error. Keep YOLO on Apple GPU with `--device auto`; keep InsightFace on CPU unless you are explicitly testing CoreML.
+On Apple Silicon, `--face-provider auto` prepares a cached, fixed-shape copy of
+the Buffalo-L models and runs them through CoreML's MLProgram path. The original
+models remain unchanged. This avoids SCRFD's incorrect 640-specific output
+metadata when `--face-det-size 320` is used. If CoreML still fails, the process
+reinitializes InsightFace on CPU; YOLO continues to use MPS independently.

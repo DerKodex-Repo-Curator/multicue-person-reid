@@ -40,7 +40,11 @@ uv run run_camera.py --camera 0 --imgsz 320 --face-det-size 320 --identity-every
 
 ## InsightFace / CoreML
 
-InsightFace runs through ONNX Runtime. `--face-provider auto` intentionally uses `CPUExecutionProvider` for InsightFace. Many installations expose only `CPUExecutionProvider`, so the code checks this at runtime instead of assuming CoreML exists.
+InsightFace runs through ONNX Runtime. On Apple Silicon, `--face-provider auto`
+uses CoreML's MLProgram format with fixed-shape Buffalo-L model copies. The
+fixed shapes avoid SCRFD's dynamic-input/output-metadata mismatch at detector
+sizes such as 320. The generated copies are cached under
+`~/.insightface/models/`; the downloaded originals are not modified.
 
 Force CoreML preference:
 
@@ -48,7 +52,7 @@ Force CoreML preference:
 uv run run_camera.py --camera 0 --face-provider coreml
 ```
 
-If CoreML fails at runtime, the code falls back to CPU where possible.
+If CoreML is unavailable or fails at runtime, the code falls back to CPU.
 
 ## Practical presets
 

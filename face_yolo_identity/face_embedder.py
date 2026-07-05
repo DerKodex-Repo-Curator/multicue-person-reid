@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any
 
 import cv2
 import numpy as np
@@ -24,11 +24,19 @@ class FaceEmbedder:
     not strong enough for production identity decisions.
     """
 
+    @staticmethod
+    def _uses_coreml(providers: list[Any]) -> bool:
+        return any(
+            item == "CoreMLExecutionProvider"
+            or (isinstance(item, tuple) and item[0] == "CoreMLExecutionProvider")
+            for item in providers
+        )
+
     def __init__(self, provider: str = "auto", det_size: tuple[int, int] = (320, 320)) -> None:
         self.backend = "opencv-fallback"
         self.app = None
         self.cascade = None
-        self.providers: list[str] = []
+        self.providers: list[Any] = []
         self.det_size = det_size
         self.provider_request = provider
         try:
@@ -36,7 +44,22 @@ class FaceEmbedder:
             from .apple_runtime import select_face_providers
 
             self.providers = select_face_providers(provider)
-            self.app = FaceAnalysis(name="buffalo_l", providers=self.providers)
+            if self._uses_coreml(self.providers):
+                from .coreml_models import prepare_coreml_model_pack
+
+                try:
+                    model_root, model_name = prepare_coreml_model_pack(det_size)
+                    self.app = FaceAnalysis(
+                        name=model_name,
+                        root=model_root,
+                        providers=self.providers,
+                    )
+                except Exception as exc:
+                    print(f"InsightFace CoreML initialization failed; using CPU: {exc}")
+                    self.providers = ["CPUExecutionProvider"]
+                    self.app = FaceAnalysis(name="buffalo_l", providers=self.providers)
+            else:
+                self.app = FaceAnalysis(name="buffalo_l", providers=self.providers)
             # 320 is much faster than 640 for live webcam use. Raise with
             # --face-det-size 640 if small/far faces are more important than FPS.
             self.app.prepare(ctx_id=0, det_size=det_size)
@@ -75,7 +98,7 @@ class FaceEmbedder:
             try:
                 faces = self.app.get(bgr_image)
             except Exception as exc:
-                if "CoreMLExecutionProvider" in self.providers:
+                if self._uses_coreml(self.providers):
                     print(f"InsightFace CoreML runtime error: {exc}")
                     if self._reinitialize_insightface_cpu():
                         faces = self.app.get(bgr_image) if self.app is not None else []

@@ -290,7 +290,7 @@ def main() -> None:
     parser.add_argument("--display-scale", type=float, default=1.0, help="Scale preview window.")
     parser.add_argument("--no-sound", action="store_true", help="Disable speech/beep guidance.")
     parser.add_argument("--beep-only", action="store_true", help="Use terminal bell instead of speech.")
-    parser.add_argument("--face-provider", default="auto", choices=["auto", "cpu", "coreml"], help="InsightFace ONNX provider. auto/cpu uses CPU; coreml is experimental on macOS.")
+    parser.add_argument("--face-provider", default="auto", choices=["auto", "cpu", "coreml"], help="InsightFace ONNX provider. auto uses fixed-shape CoreML on Apple Silicon and CPU elsewhere.")
     parser.add_argument("--face-det-size", type=int, default=320, help="InsightFace detector size. 320 is faster; 640 may detect smaller faces.")
     args = parser.parse_args()
 

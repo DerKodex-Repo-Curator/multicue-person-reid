@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import platform
 from dataclasses import dataclass
+from pathlib import Path
+
+
+FaceProvider = str | tuple[str, dict[str, str]]
 
 
 @dataclass
@@ -11,7 +15,7 @@ class RuntimeInfo:
     is_apple_silicon: bool
     torch_mps_available: bool
     onnx_providers: list[str]
-    face_providers: list[str]
+    face_providers: list[FaceProvider]
 
 
 def _torch_mps_available() -> bool:
@@ -39,21 +43,35 @@ def available_onnx_providers() -> list[str]:
         return []
 
 
-def select_face_providers(requested: str = "auto") -> list[str]:
+def select_face_providers(requested: str = "auto") -> list[FaceProvider]:
     """Select ONNX Runtime providers for InsightFace.
 
-    IMPORTANT: `auto` intentionally uses CPU for InsightFace. Some macOS
-    onnxruntime builds expose CoreMLExecutionProvider, but SCRFD/InsightFace
-    detection can fail at runtime with dynamic/static output-shape mismatches.
-    YOLO can still use Apple Silicon GPU through PyTorch MPS; face detection and
-    recognition stay on CPU unless the user explicitly opts into CoreML.
+    Apple Silicon uses CoreML's MLProgram path. FaceEmbedder supplies fixed-shape
+    model copies because Buffalo-L SCRFD's dynamic input and 640-specific output
+    metadata are not safe for CoreML at other detector sizes.
     """
     requested = (requested or "auto").lower()
     providers = available_onnx_providers()
-    if requested in {"auto", "cpu"}:
+    if requested == "cpu":
         return ["CPUExecutionProvider"]
-    if requested == "coreml":
-        return ["CoreMLExecutionProvider", "CPUExecutionProvider"] if "CoreMLExecutionProvider" in providers else ["CPUExecutionProvider"]
+    apple_silicon = platform.system() == "Darwin" and platform.machine() == "arm64"
+    wants_coreml = requested == "coreml" or (requested == "auto" and apple_silicon)
+    if wants_coreml and "CoreMLExecutionProvider" in providers:
+        model_cache = Path("~/.insightface/coreml_cache").expanduser()
+        model_cache.mkdir(parents=True, exist_ok=True)
+        return [
+            (
+                "CoreMLExecutionProvider",
+                {
+                    "ModelFormat": "MLProgram",
+                    "MLComputeUnits": "ALL",
+                    "RequireStaticInputShapes": "1",
+                    "SpecializationStrategy": "FastPrediction",
+                    "ModelCacheDirectory": str(model_cache),
+                },
+            ),
+            "CPUExecutionProvider",
+        ]
     return ["CPUExecutionProvider"]
 
 

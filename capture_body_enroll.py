@@ -268,7 +268,7 @@ def main() -> None:
     parser.add_argument("--duplicate-threshold", type=float, default=0.985)
     parser.add_argument("--no-sound", action="store_true")
     parser.add_argument("--beep-only", action="store_true", help="Use terminal bell instead of speech.")
-    parser.add_argument("--face-provider", default="auto", choices=["auto", "cpu", "coreml"], help="InsightFace ONNX provider for detecting whether the body view has a face. auto/cpu uses CPU; coreml is experimental.")
+    parser.add_argument("--face-provider", default="auto", choices=["auto", "cpu", "coreml"], help="InsightFace provider for checking faces. auto uses fixed-shape CoreML on Apple Silicon and CPU elsewhere.")
     parser.add_argument("--face-det-size", type=int, default=320, help="InsightFace detector size.")
     args = parser.parse_args()
 

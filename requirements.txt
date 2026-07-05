@@ -9,6 +9,7 @@ matplotlib>=3.8.0
 
 # Real face embeddings. The code falls back to OpenCV if unavailable, but InsightFace is recommended.
 insightface>=0.7.3
+onnx>=1.15.0
 onnxruntime>=1.17.0
 
 # Required by Ultralytics ByteTrack/BOT-SORT tracking.
