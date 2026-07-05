@@ -12,3 +12,7 @@ The current optimization line intentionally focuses on Apple Silicon/macOS first
 - Added connected, prominent COCO-17 skeleton rendering.
 - Added unified face + body/ReID enrollment so distance buckets align across modalities.
 - Added approximate face yaw feedback and clearer "turn further" guidance.
+
+## feat(enroll): add adaptive balanced sample targets
+
+Unified enrollment now supports `--bucket-target`, `--max-samples`, and `--done-hold`. The goal is to use the higher capture frame rate for more accurate enrollment while still rejecting redundant frames and balancing FRONT / LEFT / RIGHT / CLOSE / FAR / BACK samples.

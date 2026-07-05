@@ -35,12 +35,18 @@ uv run list_cameras.py --preview
 Capture face and body/ReID samples in the same pass so `front`, `close`, and `far` mean the same distance for both modalities.
 
 ```bash
-uv run capture_unified_enroll.py --person jose --camera 0 --samples 18 --clear-existing --start-delay 6
+uv run capture_unified_enroll.py --person jose --camera 0 --samples 36 --clear-existing --start-delay 6
 uv run enroll.py --known-dir known_people --db outputs/known_faces.npz
 uv run enroll_body.py --known-dir known_people --db outputs/known_bodies.npz
 ```
 
 The unified flow asks for `FRONT`, `TURN_LEFT`, `TURN_RIGHT`, `CLOSE`, `FAR`, and `BACK`. Left/right uses estimated head yaw when a face is visible, not just where the person appears in the frame. Back/no-face samples are saved only for body/ReID.
+
+For a stronger enrollment run, use a per-bucket target instead of a small fixed total. This collects more useful diversity without saving mostly redundant frames:
+
+```bash
+uv run capture_unified_enroll.py --person jose --camera 0 --bucket-target 8 --max-samples 72 --clear-existing --start-delay 6
+```
 
 Legacy separate scripts still exist: `capture_enroll.py` for face-only and `capture_body_enroll.py` for body/ReID-only.
 

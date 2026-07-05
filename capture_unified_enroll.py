@@ -100,12 +100,24 @@ def _combo(body: np.ndarray | None, geom: np.ndarray | None, sil: np.ndarray | N
     return _norm(np.concatenate(parts))
 
 
-def _target_each(samples: int) -> int:
+def _target_each(samples: int, bucket_target: int | None = None) -> int:
+    """Return the desired number of accepted samples per enrollment bucket.
+
+    ``samples`` remains supported as the target total sample count for CLI
+    compatibility. ``bucket_target`` is clearer for accuracy-focused enrollment:
+    e.g. ``--bucket-target 8`` means 8 FRONT, 8 LEFT, 8 RIGHT, etc.
+    """
+    if bucket_target is not None and bucket_target > 0:
+        return int(bucket_target)
     return max(1, int(math.ceil(samples / len(BUCKETS))))
 
 
-def _next_needed(counts: dict[str, int], samples: int) -> str:
-    target = _target_each(samples)
+def _enrollment_complete(counts: dict[str, int], target: int) -> bool:
+    return all(counts.get(b, 0) >= target for b in BUCKETS)
+
+
+def _next_needed(counts: dict[str, int], samples: int, bucket_target: int | None = None) -> str:
+    target = _target_each(samples, bucket_target)
     for b in BUCKETS:
         if counts.get(b, 0) < target:
             return b
@@ -144,6 +156,7 @@ def _quality_check(
     bucket_counts: dict[str, int],
     *,
     samples: int,
+    bucket_target: int | None,
     min_body_height: int,
     min_face_size: int,
     min_sharpness: float,
@@ -153,11 +166,11 @@ def _quality_check(
     detections = detector.detect(frame)
     det = _largest_person(detections)
     if det is None:
-        return UnifiedQuality(False, "no person", _next_needed(bucket_counts, samples), None, None, None), None, None, None, None
+        return UnifiedQuality(False, "no person", _next_needed(bucket_counts, samples, bucket_target), None, None, None), None, None, None, None
 
     crop = crop_xyxy(frame, det.box_xyxy, pad=0.04)
     if crop.size == 0:
-        return UnifiedQuality(False, "empty crop", _next_needed(bucket_counts, samples), det, None, None), None, None, None, None
+        return UnifiedQuality(False, "empty crop", _next_needed(bucket_counts, samples, bucket_target), det, None, None), None, None, None, None
 
     face = embedder.best_face(crop)
     yaw = _face_yaw_deg(face)
@@ -209,8 +222,8 @@ def _quality_check(
             q.duplicate_sim = dup
             return q, body, geom.vector, sil, combo
 
-    target = _target_each(samples)
-    needed = _next_needed(bucket_counts, samples)
+    target = _target_each(samples, bucket_target)
+    needed = _next_needed(bucket_counts, samples, bucket_target)
     if bucket_counts.get(bucket, 0) >= target and bucket != needed and any(bucket_counts.get(b, 0) < target for b in BUCKETS):
         return UnifiedQuality(False, f"enough {bucket}; need {BUCKET_LABELS[needed]}", **base), body, geom.vector, sil, combo
 
@@ -239,16 +252,18 @@ def _bar(img, x, y, w, h, frac, color):
     cv2.rectangle(img,(x,y),(x+int(w*frac),y+h),color,-1)
 
 
-def _draw_overlay(frame, *, person, saved, samples, q: UnifiedQuality|None, counts, start_remaining, font_scale):
+def _draw_overlay(frame, *, person, saved, samples, bucket_target=None, max_samples=None, q: UnifiedQuality|None, counts, start_remaining, font_scale):
     h,w=frame.shape[:2]
     fs=max(1.4,font_scale)
     small=max(1.05,fs*0.72)
     pad=int(18*fs)
     line=int(46*fs)
-    need=_next_needed(counts,samples)
+    target=_target_each(samples,bucket_target)
+    need=_next_needed(counts,samples,bucket_target)
     _rect(frame,12,12,min(w-12,int(920*fs)),12+int(190*fs),0.48)
     y=12+pad+int(24*fs)
-    _text(frame,f"UNIFIED ENROLL: {person}  {saved}/{samples}",(12+pad,y),fs,(255,255,255),4)
+    max_label = f"/{max_samples}" if max_samples else ""
+    _text(frame,f"UNIFIED ENROLL: {person}  saved {saved}{max_label}",(12+pad,y),fs,(255,255,255),4)
     y+=line
     if start_remaining and start_remaining>0:
         _text(frame,f"Starting in {start_remaining:.1f}s",(12+pad,y),small,(80,230,255),4)
@@ -266,7 +281,6 @@ def _draw_overlay(frame, *, person, saved, samples, q: UnifiedQuality|None, coun
             cv2.rectangle(frame,(x1,y1),(x2,y2),(0,255,0) if q.ok else (0,180,255),max(4,int(4*fs)))
             draw_pose(frame,q.detection,radius=max(6,int(5*fs)),thickness=max(3,int(3*fs)))
 
-    target=_target_each(samples)
     panel_w=min(w-24,int(620*fs)); panel_h=int((len(BUCKETS)+1.5)*38*fs)
     bx=max(12,w-panel_w-12); by=max(12,h-panel_h-12)
     _rect(frame,bx,by,bx+panel_w,by+panel_h,0.52)
@@ -292,7 +306,10 @@ def main() -> None:
     parser.add_argument("--camera",type=int,default=0)
     parser.add_argument("--camera-width",type=int,default=1280)
     parser.add_argument("--camera-height",type=int,default=720)
-    parser.add_argument("--samples",type=int,default=18,help="Unified samples. 12-24 is usually enough for a first local test.")
+    parser.add_argument("--samples",type=int,default=36,help="Target total accepted samples. Used to derive per-bucket targets unless --bucket-target is set.")
+    parser.add_argument("--bucket-target",type=int,default=None,help="Target accepted samples per bucket. Example: 8 means 8 FRONT, 8 LEFT, 8 RIGHT, 8 CLOSE, 8 FAR, 8 BACK.")
+    parser.add_argument("--max-samples",type=int,default=None,help="Safety cap for accepted samples. Defaults to about 2x the balanced target.")
+    parser.add_argument("--done-hold",type=float,default=3.0,help="Seconds to show DONE before auto-closing. Use -1 to wait for Q.")
     parser.add_argument("--start-delay",type=float,default=6.0)
     parser.add_argument("--delay",type=float,default=0.45)
     parser.add_argument("--clear-existing",action="store_true")
@@ -310,6 +327,9 @@ def main() -> None:
     parser.add_argument("--no-sound",action="store_true")
     parser.add_argument("--beep-only",action="store_true")
     args=parser.parse_args()
+    bucket_target = _target_each(args.samples, args.bucket_target)
+    balanced_target_total = bucket_target * len(BUCKETS)
+    max_samples = args.max_samples if args.max_samples is not None else max(balanced_target_total * 2, balanced_target_total + 12)
 
     root=Path(args.out)/args.person
     face_dir=root/"face"; body_dir=root/"body"; frame_dir=root/"unified_frames"
@@ -325,7 +345,8 @@ def main() -> None:
     audio=AudioPrompter(enabled=not args.no_sound,speech=not args.beep_only,min_interval=2.0)
     cam=ThreadedCamera(args.camera,width=args.camera_width,height=args.camera_height).start()
     print("Controls: SPACE=force save, M=mute/unmute, Q=quit")
-    print("Unified enrollment saves face samples when a face is visible and body/ReID samples for every accepted bucket.")
+    print("Unified enrollment saves face samples when visible and body/ReID samples for every accepted bucket.")
+    print(f"Balanced target: {bucket_target} samples per bucket ({balanced_target_total} minimum), max_samples={max_samples}")
     audio.prompt("Unified enrollment starting. Step into view.",force=True)
 
     counts={b:0 for b in BUCKETS}; saved=0; saved_vectors=[]; muted=args.no_sound; last_need=""; last_save=0.0
@@ -337,29 +358,34 @@ def main() -> None:
                 time.sleep(0.01); continue
             frame=packet.frame
             now=time.time(); waiting=now-start<args.start_delay
-            if saved>=args.samples:
+            complete = _enrollment_complete(counts, bucket_target) or saved >= max_samples
+            if complete:
+                if not hasattr(main, "_done_at"):
+                    main._done_at = now
+                    audio.prompt("Enrollment complete", force=True)
                 q=None
                 preview=frame.copy()
-                _draw_overlay(preview,person=args.person,saved=saved,samples=args.samples,q=q,counts=counts,start_remaining=0,font_scale=args.font_scale)
-                _text(preview,"DONE. Press Q to close.",(30,90),args.font_scale,(80,255,80),4)
+                _draw_overlay(preview,person=args.person,saved=saved,samples=args.samples,bucket_target=args.bucket_target,max_samples=max_samples,q=q,counts=counts,start_remaining=0,font_scale=args.font_scale)
+                done_msg = "DONE. Auto-closing soon." if args.done_hold >= 0 else "DONE. Press Q to close."
+                _text(preview,done_msg,(30,90),args.font_scale,(80,255,80),4)
                 show=cv2.resize(preview,None,fx=args.display_scale,fy=args.display_scale,interpolation=cv2.INTER_AREA) if args.display_scale!=1 else preview
                 cv2.imshow("capture_unified_enroll",show)
                 key=cv2.waitKey(30)&0xFF
-                if key==ord('q'):
+                if key==ord('q') or (args.done_hold >= 0 and now - main._done_at >= args.done_hold):
                     break
                 continue
 
             body=geom=sil=combo=None
             if not waiting:
-                q,body,geom,sil,combo=_quality_check(frame,detector,embedder,saved_vectors,counts,samples=args.samples,min_body_height=args.min_body_height,min_face_size=args.min_face_size,min_sharpness=args.min_sharpness,min_pose_quality=args.min_pose_quality,duplicate_threshold=args.duplicate_threshold)
+                q,body,geom,sil,combo=_quality_check(frame,detector,embedder,saved_vectors,counts,samples=args.samples,bucket_target=args.bucket_target,min_body_height=args.min_body_height,min_face_size=args.min_face_size,min_sharpness=args.min_sharpness,min_pose_quality=args.min_pose_quality,duplicate_threshold=args.duplicate_threshold)
             else:
                 q=None
-            need=_next_needed(counts,args.samples)
+            need=_next_needed(counts,args.samples,args.bucket_target)
             if not muted and not waiting and BUCKET_LABELS[need]!=last_need:
                 audio.prompt(BUCKET_LABELS[need],force=True); last_need=BUCKET_LABELS[need]
 
             preview=frame.copy()
-            _draw_overlay(preview,person=args.person,saved=saved,samples=args.samples,q=q,counts=counts,start_remaining=max(0,args.start_delay-(now-start)) if waiting else None,font_scale=args.font_scale)
+            _draw_overlay(preview,person=args.person,saved=saved,samples=args.samples,bucket_target=args.bucket_target,max_samples=max_samples,q=q,counts=counts,start_remaining=max(0,args.start_delay-(now-start)) if waiting else None,font_scale=args.font_scale)
             show=cv2.resize(preview,None,fx=args.display_scale,fy=args.display_scale,interpolation=cv2.INTER_AREA) if args.display_scale!=1 else preview
             cv2.imshow("capture_unified_enroll",show)
             key=cv2.waitKey(1)&0xFF

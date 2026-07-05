@@ -8,7 +8,7 @@ Enrollment now has a **unified face + body/ReID flow**. This is the preferred pa
 uv run capture_unified_enroll.py \
   --person jose \
   --camera 0 \
-  --samples 18 \
+  --samples 36 \
   --clear-existing \
   --start-delay 6
 ```
@@ -27,6 +27,24 @@ known_people/<person>/face/          # face crops when a face is visible
 known_people/<person>/body/          # full person crops for ReID/body cues
 known_people/<person>/unified_frames # full-frame evidence/debug samples
 ```
+
+## Accuracy-focused sample counts
+
+Fast capture means you can safely collect more samples, but the goal is **balanced diversity**, not raw volume. The improved unified enrollment now supports per-bucket targets:
+
+```bash
+uv run capture_unified_enroll.py \
+  --person jose \
+  --camera 0 \
+  --bucket-target 8 \
+  --max-samples 72 \
+  --clear-existing \
+  --start-delay 6
+```
+
+`--bucket-target 8` means the system tries to save 8 accepted samples for each bucket: FRONT, TURN_LEFT, TURN_RIGHT, CLOSE, FAR, and BACK. That is roughly 48 useful samples, but the `--max-samples` cap prevents the session from running forever if one bucket is hard to satisfy.
+
+The older `--samples` flag still works. It is interpreted as a desired total and converted into an approximate per-bucket target.
 
 ## Buckets
 
@@ -75,4 +93,4 @@ Controls:
 
 ## Completion behavior
 
-When the target sample count is reached, the unified enrollment window shows a final `DONE` screen and waits for `Q`. This avoids the previous abrupt-close/hang feeling when the timer finished while macOS camera resources were still settling.
+When every bucket reaches its target, or when `--max-samples` is reached, the unified enrollment window shows a final `DONE` screen. By default it auto-closes after a few seconds. Use `--done-hold -1` if you want it to wait for `Q`. This avoids the previous abrupt-close/hang feeling when enrollment finished while camera resources were still settling.
