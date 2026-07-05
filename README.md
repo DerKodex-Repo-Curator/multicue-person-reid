@@ -1,10 +1,10 @@
 # Multi-Cue Person Re-Identification Starter Project
 
-This is the upgraded version of the original Face + YOLO project. It is now framed more defensibly as:
+This project started as a Face + YOLO prototype and is now framed more defensibly as:
 
 > **YOLO-based person detection and same-person tracking using face recognition when available, pose/body geometry, silhouette shape, and lightweight appearance cues.**
 
-That matters because CCTV-distance recognition is not just a face-recognition problem. A far CCTV face can be too tiny or blurry to identify. This project therefore separates:
+That matters because distance-camera recognition is not just a face-recognition problem. A far or compressed face can be too tiny or blurry to identify. This project separates:
 
 - **confirmed identity**: face match is strong enough,
 - **tracked same person**: person is likely the same target across nearby frames,
@@ -20,7 +20,7 @@ Use this only on video/images where you have consent or a legitimate authorized 
 
 Finds people in the frame.
 
-### 2. YOLO pose estimation, preferred
+### 2. YOLO pose estimation
 
 Uses `yolov8n-pose.pt` to detect human keypoints. This gives a skeleton-like structure instead of only a box.
 
@@ -40,7 +40,7 @@ If InsightFace is installed, the project extracts real face embeddings. If not, 
 
 ### 4. Body appearance fingerprint
 
-Color/texture/HOG features. This is useful for short-term tracking, but it is clothing-biased, so it has a lower weight.
+Color and portable gradient/texture features. This is useful for short-term tracking, but it is clothing-biased, so it has a lower weight.
 
 ### 5. Silhouette cue
 
@@ -48,22 +48,21 @@ A lightweight shape profile from the body crop. This is not as strong as real se
 
 ---
 
-## Recommended macOS install
+## Recommended install
 
 Use Python 3.12, not Python 3.13.
 
 ```bash
-cd /mnt/data/face_yolo_identity_project
 uv python install 3.12
 uv venv --python 3.12 --seed .venv
 source .venv/bin/activate
 uv pip install -r requirements.txt
 ```
 
-For actual face embeddings:
+Check the full feature imports:
 
 ```bash
-uv pip install -r requirements.txt
+uv run python -c "import pip, lap, cv2, insightface, ultralytics; print('full-feature imports ok')"
 ```
 
 If Torch install fails on Apple Silicon, make sure your terminal and Python are `arm64`, not Rosetta `x86_64`:
@@ -72,21 +71,36 @@ If Torch install fails on Apple Silicon, make sure your terminal and Python are 
 python -c "import platform; print(platform.machine())"
 ```
 
-Expected on M-series Macs:
+---
 
-```text
-arm64
+## Camera selection
+
+Some systems expose multiple camera devices: built-in webcam, external webcam, phone camera, virtual camera, etc. List available camera indexes:
+
+```bash
+python list_cameras.py
 ```
+
+Preview them one by one:
+
+```bash
+python list_cameras.py --preview
+```
+
+Then pass the camera index explicitly:
+
+```bash
+python capture_enroll.py --person jose --camera 1 --samples 50 --clear-existing
+python run_camera.py --camera 1 --known-db outputs/known_faces.npz
+```
+
+On macOS, phone Continuity Camera can appear as a normal OpenCV camera and may become index `0`. That is normal. Use `list_cameras.py --preview` to choose the exact camera you want.
 
 ---
 
-## MacBook camera workflow
+## Step 1: Smart enrollment capture
 
-Since you only have your MacBook camera right now, start here.
-
-### Step 1: Capture enrollment images
-
-The recommended enrollment mode is now **smart automatic capture**. It watches the camera and saves only useful samples: a face must be detected, large enough, sharp enough, reasonably exposed, and not too similar to samples already saved.
+The recommended enrollment mode is **smart automatic capture**. It watches the camera and saves only useful samples: a face must be detected, large enough, sharp enough, reasonably exposed, and not too similar to samples already saved.
 
 For a clean re-enrollment:
 
@@ -94,21 +108,32 @@ For a clean re-enrollment:
 python capture_enroll.py --person jose --camera 1 --samples 50 --clear-existing --start-delay 8
 ```
 
-Then step back and move slowly. Try to give it variety:
+The overlay is intentionally large. It shows:
+
+- the current decision: `SAVE` or `SKIP`,
+- why a frame was rejected,
+- face size, sharpness, brightness, and duplicate similarity,
+- bucket progress for `center`, `left`, `right`, `close`, and `far`.
+
+Move slowly and try to fill the missing buckets:
 
 - center/front-facing,
-- slight left and slight right,
-- closer and farther,
-- neutral and slight smile,
+- slight left,
+- slight right,
+- closer,
+- farther,
+- neutral expression,
+- slight smile,
 - normal standing posture.
-
-The overlay shows why it is saving or rejecting a frame, such as `good sample`, `too blurry`, `face too small`, or `too similar`.
 
 Useful options:
 
 ```bash
-# Bigger overlay text
-python capture_enroll.py --person jose --camera 1 --samples 50 --font-scale 1.2
+# Even bigger overlay text
+python capture_enroll.py --person jose --camera 1 --samples 50 --font-scale 1.6
+
+# Smaller preview window while keeping readable text
+python capture_enroll.py --person jose --camera 1 --samples 50 --font-scale 1.6 --display-scale 0.75
 
 # Old fixed timer behavior, no quality gate
 python capture_enroll.py --person jose --camera 1 --samples 30 --fixed-auto --delay 1.5
@@ -122,36 +147,70 @@ Press **SPACE** to force-save the current frame, even in smart mode. Press **Q**
 This saves images to:
 
 ```text
-known_people/jose/face/
+known_people/<person>/face/
 ```
 
-### Step 2: Build the face database
+---
+
+## Step 2: Build the face database
 
 ```bash
 python enroll.py --known-dir known_people --db outputs/known_faces.npz
 ```
 
-### Step 3: Test live tracking and recognition
+---
+
+## Step 3: Test live tracking and recognition
 
 ```bash
-python run_camera.py --known-db outputs/known_faces.npz
+python run_camera.py --camera 1 --known-db outputs/known_faces.npz --font-scale 1.4
+```
+
+If the preview window is too large:
+
+```bash
+python run_camera.py --camera 1 --known-db outputs/known_faces.npz --font-scale 1.4 --display-scale 0.75
 ```
 
 Controls:
 
 ```text
-l = lock first/largest-left person
-r = reset lock
-s = save current crop/frame
-q = quit
+L = lock current candidate
+R = reset lock
+S = save current crop/frame
+D = toggle debug panel
+Q = quit
 ```
 
-The live test will display a box, pose keypoints when available, and a status label such as:
+The live test displays a box, pose keypoints when available, and a status label such as:
 
 ```text
 face-confirmed
 tracked
 rejected
+lost
+```
+
+---
+
+## What locking means
+
+Locking means you choose one detected person as the target. The system stores that target's current cues and compares later detections against that locked profile.
+
+Locking does **not** automatically mean “this is definitely the enrolled identity.” It means:
+
+```text
+This is the person I want to keep tracking.
+Now compare every next detection against this locked target.
+```
+
+A locked target may later become:
+
+```text
+face-confirmed  # face matched enrolled database strongly
+tracked         # likely same person, but identity not proven
+rejected        # detected person does not match the lock
+lost            # target disappeared too long
 ```
 
 ---
@@ -196,58 +255,17 @@ outputs/run1/
 }
 ```
 
----
+Generate a score graph after a run:
 
-## Important limitations
-
-This project should not claim perfect identification from distant CCTV.
-
-A good claim is:
-
-> The system tracks a selected person across frames and uses face recognition only when a face is clear enough. When the face is not usable, it relies on pose geometry, silhouette, appearance, and motion continuity to maintain a same-person lock.
-
-Avoid claiming:
-
-> The system can always identify people from far CCTV footage.
-
-That is not technically honest because low-resolution CCTV faces may not contain enough pixels for reliable identity.
+```bash
+python scripts/plot_run_metadata.py outputs/camera_run/metadata.jsonl --out outputs/camera_run/debug_scores.png
+```
 
 ---
 
-## Suggested next upgrade
+## `lap` / ByteTrack note
 
-Once the MacBook camera version works, the next serious upgrade is replacing the lightweight silhouette cue with real person segmentation or a proper person ReID model. For now, this project is intentionally lightweight and testable on your laptop camera.
-
-
-## Choosing MacBook camera vs iPhone Continuity Camera
-
-On macOS, an iPhone Continuity Camera can appear as a normal OpenCV camera. It may become camera index `0`, which means the project will use the iPhone instead of the built-in MacBook camera.
-
-List available camera indexes:
-
-```bash
-python list_cameras.py
-```
-
-Preview them one by one:
-
-```bash
-python list_cameras.py --preview
-```
-
-Then pass the camera index explicitly:
-
-```bash
-python capture_enroll.py --person jose --camera 1 --samples 30 --start-delay 8 --delay 1.5
-python run_camera.py --camera 1 --known-db outputs/known_faces.npz
-```
-
-Continuity Camera is not a problem. It is often sharper than the MacBook webcam, so it can be useful for enrollment. But if the goal is to simulate CCTV-distance footage, move farther away, lower the resolution, or test later with actual CCTV/video files.
-
-
-### Note about `lap` / ByteTrack
-
-This project uses Ultralytics `model.track()` by default so ByteTrack/BOT-SORT-style association can provide stable track IDs. That path requires the optional `lap` package, so `requirements.txt` now includes `lap>=0.5.12`.
+This project uses Ultralytics `model.track()` by default so ByteTrack/BOT-SORT-style association can provide stable track IDs. That path requires the optional `lap` package, so `requirements.txt` includes `lap>=0.5.12`.
 
 Use a seeded uv environment so `pip` exists too:
 
@@ -259,61 +277,24 @@ uv pip install -r requirements.txt
 
 If `lap` is still missing, the detector classes print a warning and fall back to YOLO `predict()` so the demo can run, but the intended/default path is Ultralytics tracking with `lap` installed.
 
+---
 
-## What “locking” means
+## Important limitations
 
-Pressing `L` does **not** permanently identify a person by itself. It selects the current candidate person as the target and stores that target's current cues:
+This project should not claim perfect identification from distant footage.
 
-- Ultralytics track ID when available
-- bounding box / motion continuity
-- face embedding when the face is visible
-- pose/body-geometry fingerprint
-- silhouette fingerprint
-- weak clothing/body appearance fingerprint
+A good claim is:
 
-After that, every new frame is scored against the locked target. The dashboard shows whether the best candidate is `face-confirmed`, `tracked`, `rejected`, or lost. This is why the project is framed as multi-cue person re-identification/tracking, not just face recognition.
+> The system tracks a selected person across frames and uses face recognition only when a face is clear enough. When the face is not usable, it relies on pose geometry, silhouette, appearance, and motion continuity to maintain a same-person lock.
 
-## Readable live dashboard
+Avoid claiming:
 
-`run_camera.py` now draws a larger right-side debug panel with per-cue scores and FPS. Useful controls:
+> The system can always identify people from far CCTV footage.
 
-```bash
-uv run run_camera.py --camera 1 --known-db outputs/known_faces.npz --font-scale 1.3
-```
+That is not technically honest because low-resolution faces may not contain enough pixels for reliable identity.
 
-If the window is too large or too small:
+---
 
-```bash
-uv run run_camera.py --camera 1 --known-db outputs/known_faces.npz --font-scale 1.4 --display-scale 0.75
-```
+## Suggested next upgrade
 
-Runtime controls:
-
-```text
-L = lock current candidate
-R = reset lock
-S = save frame/person/face crop
-D = toggle debug panel
-Q = quit
-```
-
-## macOS full-feature notes
-
-For full features on macOS, install with a seeded uv venv so `pip` exists inside the environment, then install all requirements including `lap`:
-
-```bash
-uv venv --python 3.12 --seed .venv
-source .venv/bin/activate
-uv pip install -r requirements.txt
-uv run python -c "import cv2, lap, insightface, ultralytics; print('full feature imports ok')"
-```
-
-If your OpenCV wheel does not expose `cv2.HOGDescriptor`, the project now falls back to a portable Sobel/gradient texture descriptor instead of crashing.
-
-## Plot score history with Matplotlib
-
-The live display stays in OpenCV for speed, but every frame is written to `metadata.jsonl`. You can graph the score curves after a run:
-
-```bash
-uv run python scripts/plot_run_metadata.py outputs/camera_run/metadata.jsonl --out outputs/camera_run/debug_scores.png
-```
+Once the webcam/camera version works, the next serious upgrade is replacing the lightweight silhouette cue with real person segmentation or a proper person ReID model. For now, this project is intentionally lightweight and testable on common local cameras.
