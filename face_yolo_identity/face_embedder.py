@@ -24,15 +24,21 @@ class FaceEmbedder:
     not strong enough for production identity decisions.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, provider: str = "auto", det_size: tuple[int, int] = (320, 320)) -> None:
         self.backend = "opencv-fallback"
         self.app = None
         self.cascade = None
+        self.providers: list[str] = []
+        self.det_size = det_size
         try:
             from insightface.app import FaceAnalysis  # type: ignore
+            from .apple_runtime import select_face_providers
 
-            self.app = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
-            self.app.prepare(ctx_id=0, det_size=(640, 640))
+            self.providers = select_face_providers(provider)
+            self.app = FaceAnalysis(name="buffalo_l", providers=self.providers)
+            # 320 is much faster than 640 for live webcam use. Raise with
+            # --face-det-size 640 if small/far faces are more important than FPS.
+            self.app.prepare(ctx_id=0, det_size=det_size)
             self.backend = "insightface"
         except Exception:
             cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"

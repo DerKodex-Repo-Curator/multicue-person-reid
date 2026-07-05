@@ -25,15 +25,29 @@ class Detection:
 
 
 class PersonDetector:
-    def __init__(self, weights: str, conf: float = 0.35, person_class_id: int = 0, tracker: str = "bytetrack.yaml") -> None:
+    def __init__(
+        self,
+        weights: str,
+        conf: float = 0.35,
+        person_class_id: int = 0,
+        tracker: str = "bytetrack.yaml",
+        device: str = "auto",
+        imgsz: int = 416,
+        half: bool = False,
+    ) -> None:
+        from .apple_runtime import select_yolo_device
+
         self.model = YOLO(weights)
         self.conf = conf
         self.person_class_id = person_class_id
         self.tracker = tracker
+        self.device = select_yolo_device(device)
+        self.imgsz = imgsz
+        self.half = half and self.device != "cpu"
         self._lap_warning_printed = False
 
     def detect(self, frame: np.ndarray) -> list[Detection]:
-        result = self.model.predict(frame, conf=self.conf, classes=[self.person_class_id], verbose=False)[0]
+        result = self.model.predict(frame, conf=self.conf, classes=[self.person_class_id], device=self.device, imgsz=self.imgsz, half=self.half, verbose=False)[0]
         return self._parse(result)
 
     def track(self, frame: np.ndarray) -> list[Detection]:
@@ -52,6 +66,9 @@ class PersonDetector:
                 classes=[self.person_class_id],
                 persist=True,
                 tracker=self.tracker,
+                device=self.device,
+                imgsz=self.imgsz,
+                half=self.half,
                 verbose=False,
             )[0]
             return self._parse(result)

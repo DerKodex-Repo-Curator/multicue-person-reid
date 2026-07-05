@@ -17,10 +17,23 @@ class PoseDetection(Detection):
 class PosePersonDetector:
     """YOLO pose detector returning person boxes plus COCO-17 keypoints."""
 
-    def __init__(self, weights: str = "yolov8n-pose.pt", conf: float = 0.35, tracker: str = "bytetrack.yaml") -> None:
+    def __init__(
+        self,
+        weights: str = "yolov8n-pose.pt",
+        conf: float = 0.35,
+        tracker: str = "bytetrack.yaml",
+        device: str = "auto",
+        imgsz: int = 416,
+        half: bool = False,
+    ) -> None:
+        from .apple_runtime import select_yolo_device
+
         self.model = YOLO(weights)
         self.conf = conf
         self.tracker = tracker
+        self.device = select_yolo_device(device)
+        self.imgsz = imgsz
+        self.half = half and self.device != "cpu"
         self._lap_warning_printed = False
 
     def track(self, frame: np.ndarray) -> list[PoseDetection]:
@@ -31,7 +44,7 @@ class PosePersonDetector:
         of crashing.
         """
         try:
-            result = self.model.track(frame, conf=self.conf, persist=True, tracker=self.tracker, verbose=False)[0]
+            result = self.model.track(frame, conf=self.conf, persist=True, tracker=self.tracker, device=self.device, imgsz=self.imgsz, half=self.half, verbose=False)[0]
             return self._parse(result)
         except ModuleNotFoundError as exc:
             if exc.name != "lap":
@@ -43,7 +56,7 @@ class PosePersonDetector:
             return self.detect(frame)
 
     def detect(self, frame: np.ndarray) -> list[PoseDetection]:
-        result = self.model.predict(frame, conf=self.conf, verbose=False)[0]
+        result = self.model.predict(frame, conf=self.conf, device=self.device, imgsz=self.imgsz, half=self.half, verbose=False)[0]
         return self._parse(result)
 
     def _parse(self, result) -> list[PoseDetection]:

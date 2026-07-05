@@ -1,119 +1,89 @@
-# macOS setup notes
+# macOS setup
 
-Use Python 3.12. PyTorch/Ultralytics may fail on Python 3.13, especially when the environment resolves to an x86_64/Rosetta platform.
+This project works on macOS with Python 3.12. On Apple Silicon, YOLO can use PyTorch MPS through `--device auto` or `--device mps`.
+
+## Recommended install
 
 ```bash
 uv python install 3.12
 uv venv --python 3.12 --seed .venv
 source .venv/bin/activate
-python -c "import sys, platform; print(sys.version); print(platform.machine())"
 uv pip install -r requirements.txt
 ```
 
-On Apple Silicon, `platform.machine()` should usually print:
+`--seed` is recommended because Ultralytics may try to use `pip` for optional dependency checks. The project requirements also include `lap`, which is needed by Ultralytics ByteTrack/BOT-SORT tracking.
 
-```text
-arm64
-```
-
-If it prints `x86_64`, open a normal arm64 Terminal and use Homebrew from `/opt/homebrew`, not Intel Homebrew from `/usr/local`.
-
-## Full-feature import check
+## Verify important packages
 
 ```bash
-uv run python -c "import pip, lap, cv2, insightface, ultralytics; print('full-feature imports ok')"
+uv run python -c "import torch; print(torch.backends.mps.is_available())"
+uv run python -c "import lap; print('lap ok')"
+uv run python -c "import onnxruntime as ort; print(ort.get_available_providers())"
 ```
 
-`insightface` and `onnxruntime` provide real face embeddings. `lap` is used by Ultralytics tracking / ByteTrack. The body fingerprint has a Sobel/gradient fallback, so `cv2.HOGDescriptor` is no longer required.
+If MPS prints `True`, YOLO should use Apple Silicon GPU acceleration when you run:
+
+```bash
+uv run run_camera.py --camera 0 --device auto
+```
+
+If ONNX Runtime lists `CoreMLExecutionProvider`, InsightFace can prefer it with:
+
+```bash
+uv run run_camera.py --camera 0 --face-provider coreml
+```
+
+If CoreML is not listed, InsightFace uses CPU. That is normal for many environments.
 
 ## Camera selection
 
-Phone-as-webcam features, USB cameras, virtual cameras, and built-in cameras may appear in different OpenCV indexes.
+```bash
+uv run list_cameras.py --preview
+```
+
+Then pass the camera index:
 
 ```bash
-python list_cameras.py
-python list_cameras.py --preview
+uv run run_camera.py --camera 1
 ```
 
-Then pass the chosen camera explicitly:
+## Performance tips
+
+Faster:
 
 ```bash
-python capture_enroll.py --person jose --camera 1 --samples 20 --start-delay 8
-python capture_body_enroll.py --person jose --camera 1 --samples 24 --start-delay 8
-python run_camera.py --camera 1 --known-db outputs/known_faces.npz --known-body-db outputs/known_bodies.npz
+uv run run_camera.py --camera 0 --device auto --imgsz 320 --identity-every 10 --no-pose
 ```
 
-## Face enrollment with sound guidance
+Balanced:
 
 ```bash
-uv run capture_enroll.py --person jose --camera 1 --samples 20 --clear-existing --start-delay 8 --font-scale 2.4
-uv run enroll.py --known-dir known_people --db outputs/known_faces.npz
+uv run run_camera.py --camera 0 --device auto --imgsz 416 --face-det-size 320
 ```
 
-Controls:
-
-```text
-SPACE = force save
-M     = mute/unmute sound guidance
-Q     = quit
-```
-
-Sound behavior:
+More accurate:
 
 ```bash
-# Spoken prompts using macOS say
-uv run capture_enroll.py --person jose --camera 1 --samples 20
-
-# Beeps only
-uv run capture_enroll.py --person jose --camera 1 --samples 20 --beep-only
-
-# Silent
-uv run capture_enroll.py --person jose --camera 1 --samples 20 --no-sound
+uv run run_camera.py --camera 0 --device auto --imgsz 640 --face-det-size 640 --identity-every 1
 ```
 
-## Body/ReID enrollment with sound guidance
+## Common fixes
 
-Body/ReID enrollment is separate from face enrollment. Use it for front, side/turn, back/no-face, close, and far body samples.
-
-```bash
-uv run capture_body_enroll.py --person jose --camera 1 --samples 24 --clear-existing --start-delay 8 --font-scale 2.8
-uv run enroll_body.py --known-dir known_people --db outputs/known_bodies.npz
-```
-
-Controls:
-
-```text
-SPACE = force save
-M     = mute/unmute sound guidance
-Q     = quit
-```
-
-Options:
-
-```bash
-uv run capture_body_enroll.py --person jose --camera 1 --samples 24 --beep-only
-uv run capture_body_enroll.py --person jose --camera 1 --samples 24 --no-sound
-```
-
-## Live run
-
-```bash
-uv run run_camera.py --camera 1 --known-db outputs/known_faces.npz --known-body-db outputs/known_bodies.npz --font-scale 1.8
-```
-
-If the window is too large:
-
-```bash
-uv run run_camera.py --camera 1 --known-db outputs/known_faces.npz --known-body-db outputs/known_bodies.npz --font-scale 2.2 --display-scale 0.75
-```
-
-## `lap` / ByteTrack note
-
-The intended path is Ultralytics `model.track()`, which needs `lap>=0.5.12` for linear assignment. `requirements.txt` includes `lap` and `pip`, but if an existing environment is missing them:
+If `lap` is missing:
 
 ```bash
 uv pip install pip
 uv pip install "lap>=0.5.12"
 ```
 
-The code has a fallback to YOLO `predict()` if `lap` is unavailable, but the full-feature path is tracking with `lap` installed.
+If text is too small:
+
+```bash
+--font-scale 1.8
+```
+
+If the preview window is too large:
+
+```bash
+--display-scale 0.75
+```

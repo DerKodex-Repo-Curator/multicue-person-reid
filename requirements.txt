@@ -5,11 +5,14 @@ scipy>=1.10.0
 Pillow>=10.0.0
 tqdm>=4.66.0
 PyYAML>=6.0
-# Optional but strongly recommended for real face embeddings:
+matplotlib>=3.8.0
+
+# Real face embeddings. The code falls back to OpenCV if unavailable, but InsightFace is recommended.
 insightface>=0.7.3
 onnxruntime>=1.17.0
 
 # Required by Ultralytics ByteTrack/BOT-SORT tracking.
 lap>=0.5.12
+
 # Keeps Ultralytics auto-update hooks from failing inside uv-created venvs.
 pip>=24.0
