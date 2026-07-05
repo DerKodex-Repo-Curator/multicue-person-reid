@@ -230,3 +230,10 @@ python run_camera.py --camera 1 --known-db outputs/known_faces.npz
 ```
 
 Continuity Camera is not a problem. It is often sharper than the MacBook webcam, so it can be useful for enrollment. But if the goal is to simulate CCTV-distance footage, move farther away, lower the resolution, or test later with actual CCTV/video files.
+
+
+### Note about `lap` / ByteTrack
+
+This project intentionally does **not** call Ultralytics `model.track()` by default because that path requires the optional `lap` package. On macOS/uv setups, `lap` often fails to install or Ultralytics tries to auto-install it with `pip`, which may not exist inside a uv-managed venv.
+
+Instead, `run_camera.py` and `run_video.py` use YOLO/YOLO-pose `predict()` plus this project's own `IdentityLock` for same-person continuity. If you see an old error like `ModuleNotFoundError: No module named 'lap'`, update to this package version.

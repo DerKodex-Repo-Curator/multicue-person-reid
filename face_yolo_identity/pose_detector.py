@@ -22,8 +22,13 @@ class PosePersonDetector:
         self.conf = conf
 
     def track(self, frame: np.ndarray) -> list[PoseDetection]:
-        result = self.model.track(frame, conf=self.conf, persist=True, tracker="bytetrack.yaml", verbose=False)[0]
-        return self._parse(result)
+        """Return pose detections without Ultralytics ByteTrack.
+
+        Ultralytics track() depends on the optional `lap` package. For this
+        prototype we avoid that dependency and let IdentityLock fuse IoU, face,
+        body, silhouette, and geometry cues across frames.
+        """
+        return self.detect(frame)
 
     def detect(self, frame: np.ndarray) -> list[PoseDetection]:
         result = self.model.predict(frame, conf=self.conf, verbose=False)[0]

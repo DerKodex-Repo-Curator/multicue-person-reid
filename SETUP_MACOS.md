@@ -54,3 +54,8 @@ python run_camera.py --camera 1 --known-db outputs/known_faces.npz
 ```
 
 If you want to force the MacBook's built-in camera, disable Continuity Camera temporarily or choose the FaceTime camera index found by `list_cameras.py`.
+
+
+## `lap` / ByteTrack note
+
+The current version avoids Ultralytics ByteTrack and does not require `lap`. If an older copy crashes with `ModuleNotFoundError: No module named 'lap'`, download the latest zip or replace `model.track(...)` usage with `model.predict(...)` through the updated detector classes.

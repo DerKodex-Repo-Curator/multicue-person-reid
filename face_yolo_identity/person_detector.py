@@ -35,15 +35,14 @@ class PersonDetector:
         return self._parse(result)
 
     def track(self, frame: np.ndarray) -> list[Detection]:
-        result = self.model.track(
-            frame,
-            conf=self.conf,
-            classes=[self.person_class_id],
-            persist=True,
-            tracker="bytetrack.yaml",
-            verbose=False,
-        )[0]
-        return self._parse(result)
+        """Return person detections without Ultralytics ByteTrack.
+
+        Ultralytics' built-in track() imports the optional `lap` package. On macOS
+        + uv environments this frequently fails, and this project already has its
+        own IdentityLock for same-person continuity. So the default track() method
+        intentionally uses plain predict() and leaves track_id as None.
+        """
+        return self.detect(frame)
 
     def _parse(self, result) -> list[Detection]:
         detections: list[Detection] = []
