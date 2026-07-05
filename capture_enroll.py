@@ -24,6 +24,7 @@ class QualityResult:
     face_area_ratio: float | None = None
     duplicate_sim: float | None = None
     bucket: str | None = None
+    orientation_score: float | None = None
 
 
 def _cosine(a: np.ndarray | None, b: np.ndarray | None) -> float | None:
@@ -42,23 +43,52 @@ def _sharpness(gray: np.ndarray) -> float:
     return float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
 
-def _bucket_for_face(face_box: tuple[int, int, int, int], frame_shape: tuple[int, int, int]) -> str:
+def _estimate_face_turn(face: FaceResult) -> float | None:
+    """Approximate head turn from InsightFace 5-point landmarks.
+
+    Returns a signed score. Near 0 is frontal. Positive/negative values mean
+    the nose is horizontally displaced relative to the eye midpoint. This is a
+    heuristic, but it measures head orientation better than where the face is
+    located inside the frame.
+    """
+    kps = getattr(face, "landmarks_5", None)
+    if kps is None or np.asarray(kps).shape[0] < 3:
+        return None
+    kps = np.asarray(kps, dtype=np.float32)
+    left_eye, right_eye, nose = kps[0], kps[1], kps[2]
+    eye_mid_x = float((left_eye[0] + right_eye[0]) / 2.0)
+    eye_dist = float(abs(right_eye[0] - left_eye[0]))
+    if eye_dist < 1.0:
+        return None
+    return float((nose[0] - eye_mid_x) / eye_dist)
+
+
+def _bucket_for_face(face: FaceResult, frame_shape: tuple[int, int, int]) -> tuple[str, float | None]:
+    """Return an enrollment bucket based on face size and actual head turn.
+
+    Old versions used face position in the frame as left/right. This version
+    uses landmarks for turn-left/turn-right when available.
+    """
+    if face.box_xyxy is None:
+        return "no_face", None
     h, w = frame_shape[:2]
-    x1, y1, x2, y2 = face_box
+    x1, y1, x2, y2 = face.box_xyxy
     fw = max(1, x2 - x1)
     fh = max(1, y2 - y1)
-    cx = (x1 + x2) / 2.0 / max(w, 1)
     size_ratio = max(fw, fh) / max(min(w, h), 1)
 
     if size_ratio >= 0.24:
-        return "close"
+        return "close", None
     if size_ratio <= 0.12:
-        return "far"
-    if cx < 0.40:
-        return "left"
-    if cx > 0.60:
-        return "right"
-    return "center"
+        return "far", None
+
+    turn = _estimate_face_turn(face)
+    if turn is not None:
+        if turn <= -0.16:
+            return "turn_left", turn
+        if turn >= 0.16:
+            return "turn_right", turn
+    return "front", turn
 
 
 def _quality_check(
@@ -87,16 +117,16 @@ def _quality_check(
     gray = cv2.cvtColor(face.crop, cv2.COLOR_BGR2GRAY)
     sharp = _sharpness(gray)
     bright = float(gray.mean())
-    bucket = _bucket_for_face(face.box_xyxy, frame.shape)
+    bucket, turn_score = _bucket_for_face(face, frame.shape)
 
     if face_size < min_face_size:
-        return QualityResult(False, f"face too small ({face_size}px)", face, sharp, bright, face_size, face_area_ratio, None, bucket)
+        return QualityResult(False, f"face too small ({face_size}px)", face, sharp, bright, face_size, face_area_ratio, None, bucket, turn_score)
     if sharp < min_sharpness:
-        return QualityResult(False, f"too blurry ({sharp:.0f})", face, sharp, bright, face_size, face_area_ratio, None, bucket)
+        return QualityResult(False, f"too blurry ({sharp:.0f})", face, sharp, bright, face_size, face_area_ratio, None, bucket, turn_score)
     if bright < min_brightness:
-        return QualityResult(False, f"too dark ({bright:.0f})", face, sharp, bright, face_size, face_area_ratio, None, bucket)
+        return QualityResult(False, f"too dark ({bright:.0f})", face, sharp, bright, face_size, face_area_ratio, None, bucket, turn_score)
     if bright > max_brightness:
-        return QualityResult(False, f"too bright ({bright:.0f})", face, sharp, bright, face_size, face_area_ratio, None, bucket)
+        return QualityResult(False, f"too bright ({bright:.0f})", face, sharp, bright, face_size, face_area_ratio, None, bucket, turn_score)
 
     duplicate_sim = None
     if saved_embeddings and face.embedding is not None:
@@ -104,16 +134,16 @@ def _quality_check(
         sims = [s for s in sims if s is not None]
         duplicate_sim = max(sims) if sims else None
         if duplicate_sim is not None and duplicate_sim >= duplicate_threshold:
-            return QualityResult(False, f"too similar ({duplicate_sim:.3f})", face, sharp, bright, face_size, face_area_ratio, duplicate_sim, bucket)
+            return QualityResult(False, f"too similar ({duplicate_sim:.3f})", face, sharp, bright, face_size, face_area_ratio, duplicate_sim, bucket, turn_score)
 
     if balance_buckets and saved_embeddings:
         # Prefer underrepresented capture buckets so the set is not just 30 nearly identical center shots.
         min_count = min(bucket_counts.values()) if bucket_counts else 0
         this_count = bucket_counts.get(bucket, 0)
         if this_count > min_count + 2:
-            return QualityResult(False, f"enough {bucket}; move/turn", face, sharp, bright, face_size, face_area_ratio, duplicate_sim, bucket)
+            return QualityResult(False, f"enough {bucket}; move/turn", face, sharp, bright, face_size, face_area_ratio, duplicate_sim, bucket, turn_score)
 
-    return QualityResult(True, "good sample", face, sharp, bright, face_size, face_area_ratio, duplicate_sim, bucket)
+    return QualityResult(True, "good sample", face, sharp, bright, face_size, face_area_ratio, duplicate_sim, bucket, turn_score)
 
 
 def _draw_translucent_rect(img: np.ndarray, x1: int, y1: int, x2: int, y2: int, color=(0, 0, 0), alpha: float = 0.48) -> None:
@@ -184,7 +214,7 @@ def _draw_overlay(
         y += line_h
         _put_readable_text(
             frame,
-            f"face {qr.face_size or 0}px | sharp {qr.sharpness or 0:.0f} | bright {qr.brightness or 0:.0f} | bucket {qr.bucket or '-'}",
+            f"face {qr.face_size or 0}px | sharp {qr.sharpness or 0:.0f} | bright {qr.brightness or 0:.0f} | bucket {qr.bucket or '-'} | turn {qr.orientation_score if qr.orientation_score is not None else 0:+.2f}",
             (10 + pad, y),
             font_scale=small,
             color=(245, 245, 245),
@@ -201,7 +231,7 @@ def _draw_overlay(
     _put_readable_text(frame, ctrl_text, (10 + pad, h - 18), font_scale=small, color=(235, 235, 235), thickness=2)
 
     # Compact bottom-right bucket card. This avoids taking away camera area.
-    buckets = ["center", "left", "right", "close", "far"]
+    buckets = ["front", "turn_left", "turn_right", "close", "far"]
     target_each = max(1, int(np.ceil(samples / max(len(buckets), 1) * 0.55)))
     b_fs = max(0.48, fs * 0.70)
     b_line = int(28 * fs)
@@ -228,8 +258,8 @@ def main() -> None:
     parser.add_argument("--person", required=True, help="Person label/folder name, e.g. jose")
     parser.add_argument("--out", default="known_people", help="Enrollment root folder.")
     parser.add_argument("--camera", type=int, default=0, help="Camera index. Use list_cameras.py to choose.")
-    parser.add_argument("--samples", type=int, default=40, help="Number of useful images to save before exiting.")
-    parser.add_argument("--delay", type=float, default=0.7, help="Minimum seconds between smart auto captures.")
+    parser.add_argument("--samples", type=int, default=25, help="Number of useful images to save before exiting.")
+    parser.add_argument("--delay", type=float, default=0.45, help="Minimum seconds between smart auto captures.")
     parser.add_argument("--start-delay", type=float, default=6.0, help="Seconds to wait before automatic capture starts.")
     parser.add_argument("--manual", action="store_true", help="Press SPACE to capture each sample. Disables smart auto capture.")
     parser.add_argument("--fixed-auto", action="store_true", help="Old behavior: save every --delay seconds without quality checks.")
@@ -238,9 +268,9 @@ def main() -> None:
     parser.add_argument("--min-sharpness", type=float, default=55.0, help="Minimum Laplacian sharpness for smart capture.")
     parser.add_argument("--min-brightness", type=float, default=35.0, help="Minimum face brightness.")
     parser.add_argument("--max-brightness", type=float, default=225.0, help="Maximum face brightness.")
-    parser.add_argument("--duplicate-threshold", type=float, default=0.988, help="Skip samples with embedding similarity above this threshold.")
+    parser.add_argument("--duplicate-threshold", type=float, default=0.992, help="Skip samples with embedding similarity above this threshold.")
     parser.add_argument("--no-balance-buckets", action="store_true", help="Do not balance center/left/right/close/far samples.")
-    parser.add_argument("--font-scale", type=float, default=1.15, help="Overlay text size.")
+    parser.add_argument("--font-scale", type=float, default=2.0, help="Overlay text size.")
     parser.add_argument("--display-scale", type=float, default=1.0, help="Scale preview window.")
     args = parser.parse_args()
 
@@ -257,12 +287,12 @@ def main() -> None:
 
     embedder = None if args.manual or args.fixed_auto else FaceEmbedder()
     saved_embeddings: list[np.ndarray] = []
-    bucket_counts = {"center": 0, "left": 0, "right": 0, "close": 0, "far": 0}
+    bucket_counts = {"front": 0, "turn_left": 0, "turn_right": 0, "close": 0, "far": 0}
 
     mode = "manual" if args.manual else "fixed-auto" if args.fixed_auto else "smart-auto"
     print("Controls: SPACE=force save, q=quit.")
     print("Smart mode saves only when face quality/diversity looks useful.")
-    print("Move slowly: center/front, slight left/right, closer, farther. Avoid motion blur.")
+    print("Move slowly: face front, turn head left/right, move closer, move farther. Back-facing samples are not useful for face enrollment.")
     print(f"Mode: {mode}; camera={args.camera}; target samples={args.samples}")
 
     saved = 0

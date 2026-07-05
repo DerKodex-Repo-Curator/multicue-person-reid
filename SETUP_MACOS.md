@@ -95,13 +95,13 @@ If the project previously failed with `AttributeError: module 'cv2' has no attri
 For larger live text:
 
 ```bash
-uv run run_camera.py --camera 1 --known-db outputs/known_faces.npz --font-scale 1.4
+uv run run_camera.py --camera 1 --known-db outputs/known_faces.npz --font-scale 2.2
 ```
 
 For smaller display window but still readable text:
 
 ```bash
-uv run run_camera.py --camera 1 --known-db outputs/known_faces.npz --font-scale 1.4 --display-scale 0.75
+uv run run_camera.py --camera 1 --known-db outputs/known_faces.npz --font-scale 2.2 --display-scale 0.75
 ```
 
 
@@ -110,7 +110,7 @@ uv run run_camera.py --camera 1 --known-db outputs/known_faces.npz --font-scale 
 If the recognition is weak, re-enroll with quality-gated automatic capture instead of a fixed timer:
 
 ```bash
-uv run capture_enroll.py --person jose --camera 1 --samples 50 --clear-existing --start-delay 8 --font-scale 1.4
+uv run capture_enroll.py --person jose --camera 1 --samples 25 --clear-existing --start-delay 8 --font-scale 2.2
 uv run enroll.py --known-dir known_people --db outputs/known_faces.npz
 ```
 

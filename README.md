@@ -86,29 +86,29 @@ Start here when testing with a built-in webcam, USB webcam, phone-as-webcam, or 
 
 ### Step 1: Capture enrollment images
 
-The recommended enrollment mode is now **smart automatic capture**. It watches the camera and saves only useful samples: a face must be detected, large enough, sharp enough, reasonably exposed, and not too similar to samples already saved. The status UI is drawn as a translucent overlay on top of the camera feed so the video remains large.
+The recommended enrollment mode is now **smart automatic capture**. It watches the camera and saves only useful samples: a face must be detected, large enough, sharp enough, reasonably exposed, not too similar to samples already saved, and useful for a missing bucket. The left/right buckets now use face landmarks to estimate actual head turn, not merely where your face is located in the frame. The status UI is drawn as a translucent overlay on top of the camera feed so the video remains large.
 
 For a clean re-enrollment:
 
 ```bash
-python capture_enroll.py --person jose --camera 1 --samples 50 --clear-existing --start-delay 8
+python capture_enroll.py --person jose --camera 1 --samples 25 --clear-existing --start-delay 8
 ```
 
 Then step back and move slowly. Try to give it variety:
 
-- center/front-facing,
-- slight left and slight right,
+- front-facing,
+- actual head turn left and right,
 - closer and farther,
 - neutral and slight smile,
 - normal standing posture.
 
-The overlay shows why it is saving or rejecting a frame, such as `good sample`, `too blurry`, `face too small`, or `too similar`.
+The overlay shows why it is saving or rejecting a frame, such as `good sample`, `too blurry`, `face too small`, `too similar`, or `enough front; move/turn`. The bucket card shows what is still missing: `FRONT`, `TURN_LEFT`, `TURN_RIGHT`, `CLOSE`, and `FAR`. Back-facing frames are not saved for face enrollment because there is no face embedding to enroll.
 
 Useful options:
 
 ```bash
 # Bigger overlay text
-python capture_enroll.py --person jose --camera 1 --samples 50 --font-scale 1.4
+python capture_enroll.py --person jose --camera 1 --samples 25 --font-scale 2.2
 
 # Old fixed timer behavior, no quality gate
 python capture_enroll.py --person jose --camera 1 --samples 30 --fixed-auto --delay 1.5
@@ -284,7 +284,7 @@ uv run run_camera.py --camera 1 --known-db outputs/known_faces.npz --font-scale 
 If the window is too large or too small:
 
 ```bash
-uv run run_camera.py --camera 1 --known-db outputs/known_faces.npz --font-scale 1.4 --display-scale 0.75
+uv run run_camera.py --camera 1 --known-db outputs/known_faces.npz --font-scale 2.2 --display-scale 0.75
 ```
 
 Runtime controls:

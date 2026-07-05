@@ -13,6 +13,7 @@ class FaceResult:
     crop: np.ndarray | None
     embedding: np.ndarray | None
     backend: str
+    landmarks_5: np.ndarray | None = None
 
 
 class FaceEmbedder:
@@ -54,7 +55,8 @@ class FaceEmbedder:
             crop = bgr_image[y1:y2, x1:x2].copy() if x2 > x1 and y2 > y1 else None
             emb = np.asarray(face.embedding, dtype=np.float32)
             emb = emb / max(np.linalg.norm(emb), 1e-8)
-            return FaceResult((x1, y1, x2, y2), crop, emb, self.backend)
+            kps = np.asarray(getattr(face, "kps", None), dtype=np.float32) if getattr(face, "kps", None) is not None else None
+            return FaceResult((x1, y1, x2, y2), crop, emb, self.backend, kps)
 
         gray = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2GRAY)
         faces = self.cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(48, 48)) if self.cascade is not None else []
@@ -66,4 +68,4 @@ class FaceEmbedder:
         emb = small.astype(np.float32).reshape(-1)
         emb = (emb - emb.mean()) / (emb.std() + 1e-6)
         emb = emb / max(np.linalg.norm(emb), 1e-8)
-        return FaceResult((int(x), int(y), int(x + ww), int(y + hh)), crop, emb, self.backend)
+        return FaceResult((int(x), int(y), int(x + ww), int(y + hh)), crop, emb, self.backend, None)
