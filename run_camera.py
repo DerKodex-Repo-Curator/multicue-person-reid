@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import time
 from pathlib import Path
 
 import cv2
@@ -11,6 +12,7 @@ from face_yolo_identity.known_db import KnownFaceDB
 from face_yolo_identity.person_detector import PersonDetector, choose_first_person
 from face_yolo_identity.pose_detector import PosePersonDetector, draw_pose
 from face_yolo_identity.utils import crop_xyxy, draw_label, ensure_dirs, load_config, safe_round, write_jsonl, xyxy_to_int
+from face_yolo_identity.visual_debug import draw_debug_panel, readable_label
 
 
 def build_detector(cfg: dict, use_pose: bool):
@@ -33,6 +35,9 @@ def main() -> None:
     parser.add_argument("--config", default="config.yaml", help="Config YAML path.")
     parser.add_argument("--known-db", default=None, help="Optional enrolled known faces .npz from enroll.py.")
     parser.add_argument("--no-pose", action="store_true", help="Disable YOLO pose.")
+    parser.add_argument("--font-scale", type=float, default=1.0, help="Scale overlay text. Try 1.3 or 1.6 if text is small.")
+    parser.add_argument("--display-scale", type=float, default=1.0, help="Scale displayed window frame. Example: 0.75 on small screens.")
+    parser.add_argument("--no-debug-panel", action="store_true", help="Hide the right-side debug dashboard.")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -62,12 +67,20 @@ def main() -> None:
     recognized_name = None
     recognized_score = None
     frame_idx = -1
+    debug_panel = not args.no_debug_panel
+    last_t = time.perf_counter()
+    fps = None
 
     while True:
         ok, frame = cap.read()
         if not ok:
             break
         frame_idx += 1
+        now = time.perf_counter()
+        dt = now - last_t
+        last_t = now
+        if dt > 0:
+            fps = 1.0 / dt if fps is None else (0.90 * fps + 0.10 * (1.0 / dt))
         h, w = frame.shape[:2]
         annotated = frame.copy()
         detections = detector.track(frame)
@@ -91,7 +104,7 @@ def main() -> None:
             first = choose_first_person(detections, w)
             if first is not None:
                 x1, y1, x2, y2 = xyxy_to_int(first.box_xyxy, w, h)
-                draw_label(annotated, "press L to lock this person", x1, y1)
+                readable_label(annotated, "candidate: press L to lock", x1, max(30, y1), scale=args.font_scale, thickness=2)
                 if key == ord("l"):
                     score = lock.initialize(frame, first)
                     locked = True
@@ -126,7 +139,7 @@ def main() -> None:
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
             draw_pose(annotated, score.detection)
             label = recognized_name or score.status
-            draw_label(annotated, f"{label} {score.combined:.2f}", x1, y1)
+            readable_label(annotated, f"{label} | score {score.combined:.2f}", x1, max(30, y1), scale=args.font_scale, thickness=2)
 
             if key == ord("s") and score.accepted:
                 cv2.imwrite(str(frames_dir / f"frame_{frame_idx:06d}.jpg"), frame)
@@ -136,8 +149,18 @@ def main() -> None:
                 print(f"saved frame {frame_idx}")
 
         write_jsonl(metadata_path, event)
-        cv2.putText(annotated, "l lock | r reset | s save | q quit", (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        cv2.imshow("run_camera", annotated)
+        if key == ord("d"):
+            debug_panel = not debug_panel
+            print(f"debug panel: {debug_panel}")
+        if debug_panel:
+            draw_debug_panel(annotated, frame_idx=frame_idx, detections=len(detections), locked=locked, target_label=recognized_name, score=score, fps=fps, camera=args.camera, scale=args.font_scale)
+        else:
+            readable_label(annotated, "L lock | R reset | S save | D debug | Q quit", 20, 40, scale=args.font_scale, thickness=2)
+        if args.display_scale != 1.0:
+            show = cv2.resize(annotated, None, fx=args.display_scale, fy=args.display_scale, interpolation=cv2.INTER_AREA)
+        else:
+            show = annotated
+        cv2.imshow("run_camera", show)
 
     cap.release()
     cv2.destroyAllWindows()

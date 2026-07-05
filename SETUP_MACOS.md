@@ -76,3 +76,30 @@ uv pip install "lap>=0.5.12"
 ```
 
 The code still has a fallback to `predict()` if `lap` is missing, but that is only a safety net. The intended path is Ultralytics `model.track()`.
+
+
+## Full-feature macOS setup
+
+Use Python 3.12 and seed the venv so `pip` exists. This avoids Ultralytics failing when it checks optional tracking packages.
+
+```bash
+uv python install 3.12
+uv venv --python 3.12 --seed .venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
+uv run python -c "import pip, lap, cv2, insightface, ultralytics; print('macOS full-feature imports ok')"
+```
+
+If the project previously failed with `AttributeError: module 'cv2' has no attribute 'HOGDescriptor'`, update to this version. The body fingerprint now has a pure Sobel/gradient fallback, so OpenCV HOG is no longer required.
+
+For larger live text:
+
+```bash
+uv run run_camera.py --camera 1 --known-db outputs/known_faces.npz --font-scale 1.4
+```
+
+For smaller display window but still readable text:
+
+```bash
+uv run run_camera.py --camera 1 --known-db outputs/known_faces.npz --font-scale 1.4 --display-scale 0.75
+```

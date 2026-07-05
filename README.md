@@ -245,3 +245,62 @@ uv pip install -r requirements.txt
 ```
 
 If `lap` is still missing, the detector classes print a warning and fall back to YOLO `predict()` so the demo can run, but the intended/default path is Ultralytics tracking with `lap` installed.
+
+
+## What “locking” means
+
+Pressing `L` does **not** permanently identify a person by itself. It selects the current candidate person as the target and stores that target's current cues:
+
+- Ultralytics track ID when available
+- bounding box / motion continuity
+- face embedding when the face is visible
+- pose/body-geometry fingerprint
+- silhouette fingerprint
+- weak clothing/body appearance fingerprint
+
+After that, every new frame is scored against the locked target. The dashboard shows whether the best candidate is `face-confirmed`, `tracked`, `rejected`, or lost. This is why the project is framed as multi-cue person re-identification/tracking, not just face recognition.
+
+## Readable live dashboard
+
+`run_camera.py` now draws a larger right-side debug panel with per-cue scores and FPS. Useful controls:
+
+```bash
+uv run run_camera.py --camera 1 --known-db outputs/known_faces.npz --font-scale 1.3
+```
+
+If the window is too large or too small:
+
+```bash
+uv run run_camera.py --camera 1 --known-db outputs/known_faces.npz --font-scale 1.4 --display-scale 0.75
+```
+
+Runtime controls:
+
+```text
+L = lock current candidate
+R = reset lock
+S = save frame/person/face crop
+D = toggle debug panel
+Q = quit
+```
+
+## macOS full-feature notes
+
+For full features on macOS, install with a seeded uv venv so `pip` exists inside the environment, then install all requirements including `lap`:
+
+```bash
+uv venv --python 3.12 --seed .venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
+uv run python -c "import cv2, lap, insightface, ultralytics; print('full feature imports ok')"
+```
+
+If your OpenCV wheel does not expose `cv2.HOGDescriptor`, the project now falls back to a portable Sobel/gradient texture descriptor instead of crashing.
+
+## Plot score history with Matplotlib
+
+The live display stays in OpenCV for speed, but every frame is written to `metadata.jsonl`. You can graph the score curves after a run:
+
+```bash
+uv run python scripts/plot_run_metadata.py outputs/camera_run/metadata.jsonl --out outputs/camera_run/debug_scores.png
+```
