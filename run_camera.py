@@ -7,6 +7,7 @@ from pathlib import Path
 import cv2
 
 from face_yolo_identity.face_embedder import FaceEmbedder
+from face_yolo_identity.body_db import KnownBodyDB
 from face_yolo_identity.identity_lock import IdentityLock
 from face_yolo_identity.known_db import KnownFaceDB
 from face_yolo_identity.person_detector import PersonDetector, choose_first_person
@@ -34,6 +35,7 @@ def main() -> None:
     parser.add_argument("--out", default="outputs/camera_run", help="Output folder.")
     parser.add_argument("--config", default="config.yaml", help="Config YAML path.")
     parser.add_argument("--known-db", default=None, help="Optional enrolled known faces .npz from enroll.py.")
+    parser.add_argument("--known-body-db", default=None, help="Optional body/ReID .npz from enroll_body.py.")
     parser.add_argument("--no-pose", action="store_true", help="Disable YOLO pose.")
     parser.add_argument("--font-scale", type=float, default=1.0, help="Scale overlay text. Try 1.3 or 1.6 if text is small.")
     parser.add_argument("--display-scale", type=float, default=1.0, help="Scale displayed window frame. Example: 0.75 on small screens.")
@@ -54,6 +56,7 @@ def main() -> None:
     detector = build_detector(cfg, use_pose)
     embedder = FaceEmbedder()
     known_db = KnownFaceDB.load(args.known_db) if args.known_db else None
+    known_body_db = KnownBodyDB.load(args.known_body_db) if args.known_body_db else None
     lock = IdentityLock(embedder, cfg["identity"] | cfg.get("outputs", {}))
 
     cap = cv2.VideoCapture(args.camera)
@@ -66,6 +69,8 @@ def main() -> None:
     locked = False
     recognized_name = None
     recognized_score = None
+    body_name = None
+    body_score = None
     frame_idx = -1
     debug_panel = not args.no_debug_panel
     last_t = time.perf_counter()
@@ -92,6 +97,8 @@ def main() -> None:
             locked = False
             recognized_name = None
             recognized_score = None
+            body_name = None
+            body_score = None
             lock = IdentityLock(embedder, cfg["identity"] | cfg.get("outputs", {}))
             print("reset lock")
 
@@ -117,8 +124,15 @@ def main() -> None:
                 locked = False
                 print("lost lock")
 
-        event = {"frame": frame_idx, "detections": len(detections), "locked": locked, "name": recognized_name, "name_score": safe_round(recognized_score)}
+        event = {"frame": frame_idx, "detections": len(detections), "locked": locked, "name": recognized_name, "name_score": safe_round(recognized_score), "body_name": body_name, "body_score": safe_round(body_score)}
         if score is not None:
+            if known_body_db is not None:
+                bm = known_body_db.match(
+                    body=score.body_vector,
+                    geometry=score.geometry_result.vector,
+                    silhouette=score.silhouette_vector,
+                )
+                body_name, body_score = bm.name, bm.score
             event.update(
                 {
                     "accepted": bool(score.accepted),
@@ -131,6 +145,8 @@ def main() -> None:
                     "combined": safe_round(score.combined),
                     "pose_quality": safe_round(score.geometry_result.quality),
                     "visible_keypoints": score.geometry_result.visible_keypoints,
+                    "body_db_match": body_name,
+                    "body_db_score": safe_round(body_score),
                 }
             )
 
@@ -138,8 +154,9 @@ def main() -> None:
             color = (0, 255, 0) if score.accepted else (0, 0, 255)
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
             draw_pose(annotated, score.detection)
-            label = recognized_name or score.status
-            readable_label(annotated, f"{label} | score {score.combined:.2f}", x1, max(30, y1), scale=args.font_scale, thickness=2)
+            label = recognized_name or (f"body:{body_name}" if body_name else score.status)
+            extra = f" | body {body_score:.2f}" if body_score is not None and body_score == body_score else ""
+            readable_label(annotated, f"{label} | score {score.combined:.2f}{extra}", x1, max(30, y1), scale=args.font_scale, thickness=2)
 
             if key == ord("s") and score.accepted:
                 cv2.imwrite(str(frames_dir / f"frame_{frame_idx:06d}.jpg"), frame)

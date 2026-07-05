@@ -9,6 +9,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from face_yolo_identity.audio import AudioPrompter
 from face_yolo_identity.face_embedder import FaceEmbedder, FaceResult
 from face_yolo_identity.utils import ensure_dirs
 
@@ -225,7 +226,7 @@ def _draw_overlay(
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0) if qr.ok else (0, 180, 255), max(2, int(3 * fs)))
 
     # Bottom-left controls chip.
-    ctrl_text = "SPACE force save   Q quit"
+    ctrl_text = "SPACE force save   M mute   Q quit"
     (tw, th), _ = cv2.getTextSize(ctrl_text, cv2.FONT_HERSHEY_SIMPLEX, small, 2)
     _draw_translucent_rect(frame, 10, h - th - 28, 10 + tw + 2 * pad, h - 8, alpha=0.42)
     _put_readable_text(frame, ctrl_text, (10 + pad, h - 18), font_scale=small, color=(235, 235, 235), thickness=2)
@@ -253,12 +254,27 @@ def _draw_overlay(
         _draw_bar(frame, bar_x, yy - int(17 * fs), bar_w, max(8, int(10 * fs)), count / max(target_each, 1), fill=col)
         yy += b_line
 
+def _next_needed_face(bucket_counts: dict[str, int], samples: int) -> tuple[str, str]:
+    labels = {
+        "front": "look front",
+        "turn_left": "turn your head left",
+        "turn_right": "turn your head right",
+        "close": "step closer",
+        "far": "step farther",
+    }
+    buckets = list(labels)
+    target_each = max(1, int(np.ceil(samples / max(len(buckets), 1) * 0.55)))
+    missing = [b for b in buckets if bucket_counts.get(b, 0) < target_each]
+    b = missing[0] if missing else min(buckets, key=lambda x: bucket_counts.get(x, 0))
+    return b, labels[b]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Capture enrollment images from webcam/Continuity Camera.")
     parser.add_argument("--person", required=True, help="Person label/folder name, e.g. jose")
     parser.add_argument("--out", default="known_people", help="Enrollment root folder.")
     parser.add_argument("--camera", type=int, default=0, help="Camera index. Use list_cameras.py to choose.")
-    parser.add_argument("--samples", type=int, default=25, help="Number of useful images to save before exiting.")
+    parser.add_argument("--samples", type=int, default=20, help="Number of useful face images to save before exiting. 18-25 is usually enough for testing.")
     parser.add_argument("--delay", type=float, default=0.45, help="Minimum seconds between smart auto captures.")
     parser.add_argument("--start-delay", type=float, default=6.0, help="Seconds to wait before automatic capture starts.")
     parser.add_argument("--manual", action="store_true", help="Press SPACE to capture each sample. Disables smart auto capture.")
@@ -272,6 +288,8 @@ def main() -> None:
     parser.add_argument("--no-balance-buckets", action="store_true", help="Do not balance center/left/right/close/far samples.")
     parser.add_argument("--font-scale", type=float, default=2.0, help="Overlay text size.")
     parser.add_argument("--display-scale", type=float, default=1.0, help="Scale preview window.")
+    parser.add_argument("--no-sound", action="store_true", help="Disable speech/beep guidance.")
+    parser.add_argument("--beep-only", action="store_true", help="Use terminal bell instead of macOS speech.")
     args = parser.parse_args()
 
     person_dir = Path(args.out) / args.person / "face"
@@ -288,12 +306,15 @@ def main() -> None:
     embedder = None if args.manual or args.fixed_auto else FaceEmbedder()
     saved_embeddings: list[np.ndarray] = []
     bucket_counts = {"front": 0, "turn_left": 0, "turn_right": 0, "close": 0, "far": 0}
+    audio = AudioPrompter(enabled=not args.no_sound, speech=not args.beep_only, min_interval=2.0)
+    last_need = ""
 
     mode = "manual" if args.manual else "fixed-auto" if args.fixed_auto else "smart-auto"
     print("Controls: SPACE=force save, q=quit.")
     print("Smart mode saves only when face quality/diversity looks useful.")
     print("Move slowly: face front, turn head left/right, move closer, move farther. Back-facing samples are not useful for face enrollment.")
     print(f"Mode: {mode}; camera={args.camera}; target samples={args.samples}")
+    audio.prompt("Face enrollment starting. Step into view.", force=True)
 
     saved = 0
     start_time = time.time()
@@ -326,6 +347,12 @@ def main() -> None:
         else:
             qr = None
 
+        if not waiting and not args.manual and not args.fixed_auto:
+            _, need_text = _next_needed_face(bucket_counts, args.samples)
+            if need_text != last_need:
+                audio.prompt(need_text, force=True)
+                last_need = need_text
+
         start_remaining = max(0.0, args.start_delay - elapsed) if waiting else None
         _draw_overlay(preview, person=args.person, saved=saved, samples=args.samples, mode=mode, qr=qr, start_remaining=start_remaining, font_scale=args.font_scale, bucket_counts=bucket_counts)
 
@@ -335,6 +362,9 @@ def main() -> None:
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
             break
+        if key == ord("m"):
+            audio.enabled = not audio.enabled
+            print("audio:", "on" if audio.enabled else "muted")
 
         force_save = key == 32
         do_save = False
@@ -357,6 +387,7 @@ def main() -> None:
             if qr is not None and qr.bucket is not None:
                 bucket_counts[qr.bucket] = bucket_counts.get(qr.bucket, 0) + 1
             print(f"saved {path}" + (f"  [{qr.reason}; bucket={qr.bucket}]" if qr else ""))
+            audio.prompt("Saved", force=True)
 
     cap.release()
     cv2.destroyAllWindows()

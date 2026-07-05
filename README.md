@@ -91,7 +91,7 @@ The recommended enrollment mode is now **smart automatic capture**. It watches t
 For a clean re-enrollment:
 
 ```bash
-python capture_enroll.py --person jose --camera 1 --samples 25 --clear-existing --start-delay 8
+python capture_enroll.py --person jose --camera 1 --samples 20 --clear-existing --start-delay 8
 ```
 
 Then step back and move slowly. Try to give it variety:
@@ -117,7 +117,7 @@ python capture_enroll.py --person jose --camera 1 --samples 30 --fixed-auto --de
 python capture_enroll.py --person jose --camera 1 --samples 20 --manual
 ```
 
-Press **SPACE** to force-save the current frame, even in smart mode. Press **Q** to quit.
+Press **SPACE** to force-save the current frame, even in smart mode. Press **M** to mute/unmute sound guidance. Press **Q** to quit. On macOS, sound guidance uses the built-in `say` command by default; use `--beep-only` for simple beeps or `--no-sound` for silent mode.
 
 This saves images to:
 
@@ -131,10 +131,58 @@ known_people/jose/face/
 python enroll.py --known-dir known_people --db outputs/known_faces.npz
 ```
 
+### Step 2: Capture body/ReID enrollment samples
+
+Face enrollment is for identity when the face is clear. Body/ReID enrollment is separate because back-facing, side-facing, and far-away body samples do not produce useful face embeddings. This mode saves person crops for appearance, pose geometry, and silhouette cues. It is useful for same-session re-identification experiments, but it should not be presented as permanent biometric proof. Clothing and camera angle still matter.
+
+Run:
+
+```bash
+python capture_body_enroll.py --person jose --camera 1 --samples 24 --clear-existing --start-delay 8
+```
+
+The body enrollment HUD uses larger text and sound prompts. It asks for buckets such as:
+
+```text
+FRONT
+LEFT
+RIGHT
+BACK
+CLOSE
+FAR
+```
+
+Unlike face enrollment, the `BACK` bucket is allowed here. It means the system sees a person body/pose but no usable face. This helps the project test tracking when the face disappears.
+
+Useful options:
+
+```bash
+# Much larger text if you are far from the screen
+python capture_body_enroll.py --person jose --camera 1 --samples 24 --font-scale 3.0
+
+# Beeps instead of spoken prompts
+python capture_body_enroll.py --person jose --camera 1 --samples 24 --beep-only
+
+# Silent mode
+python capture_body_enroll.py --person jose --camera 1 --samples 24 --no-sound
+```
+
+Then build the body/ReID database:
+
+```bash
+python enroll_body.py --known-dir known_people --db outputs/known_bodies.npz
+```
+
+This creates:
+
+```text
+outputs/known_bodies.npz
+```
+
 ### Step 3: Test live tracking and recognition
 
 ```bash
-python run_camera.py --known-db outputs/known_faces.npz
+python run_camera.py --known-db outputs/known_faces.npz --known-body-db outputs/known_bodies.npz
 ```
 
 Controls:
@@ -238,8 +286,9 @@ python list_cameras.py --preview
 Then pass the camera index explicitly:
 
 ```bash
-python capture_enroll.py --person jose --camera 1 --samples 30 --start-delay 8 --delay 1.5
-python run_camera.py --camera 1 --known-db outputs/known_faces.npz
+python capture_enroll.py --person jose --camera 1 --samples 20 --start-delay 8
+python capture_body_enroll.py --person jose --camera 1 --samples 24 --start-delay 8
+python run_camera.py --camera 1 --known-db outputs/known_faces.npz --known-body-db outputs/known_bodies.npz --known-body-db outputs/known_bodies.npz
 ```
 
 A high-quality phone/external camera can be useful for clean enrollment, but it may not represent CCTV-distance difficulty. To simulate the target environment, move farther away, lower the resolution, or test later with actual CCTV/video files.
