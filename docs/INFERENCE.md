@@ -2,13 +2,15 @@
 
 ## Automatic identity mode
 
-When you provide known databases, the live camera script now tries to identify people before manual lock.
+Locking is no longer required to determine a known person. When you provide known databases, the live camera script labels matching candidates automatically.
 
 ```bash
 uv run run_camera.py \
   --camera 0 \
   --known-db outputs/known_faces.npz \
-  --known-body-db outputs/known_bodies.npz
+  --known-body-db outputs/known_bodies.npz \
+  --device auto \
+  --imgsz 416
 ```
 
 The system runs known-person matching every few frames, controlled by:
@@ -17,25 +19,48 @@ The system runs known-person matching every few frames, controlled by:
 --identity-every 5
 ```
 
-If a known person is matched strongly enough, the system can automatically lock onto them.
+Lower values are more responsive but slower. Higher values are faster but labels update less often.
 
-Disable automatic behavior:
+## Optional focus lock
+
+Manual lock still exists, but it now means **focus tracking**, not identity recognition.
+
+Press `L` when you want to keep following one selected target across frames. This is useful for experiments with continuity scoring, but it is not required for known-person labels.
+
+Automatic focus lock is off by default. Enable it only when desired:
+
+```bash
+--auto-lock
+```
+
+Disable known-person matching entirely:
 
 ```bash
 --no-auto-identify
---no-auto-lock
 ```
 
-## Manual lock
+## Pose rendering
 
-Press `L` to manually lock the current first/largest-left candidate.
+YOLO-pose now draws connected skeleton lines and larger joints instead of only small joint dots. This makes body geometry easier to debug visually.
 
-Locking means: "follow this selected target across later frames." It does not automatically mean the person is identity-confirmed.
+## Threaded camera
+
+The live camera script reads frames on a background thread by default:
+
+```bash
+--threaded-camera
+```
+
+This keeps the preview fresher when face/body inference takes longer than the camera frame interval. You can disable it for debugging:
+
+```bash
+--no-threaded-camera
+```
 
 ## Controls
 
-- `L`: manual lock
-- `R`: reset lock
+- `L`: optional manual focus lock
+- `R`: reset lock/focus state
 - `S`: save frame/person/face crop
 - `D`: toggle debug panel
 - `Q`: quit

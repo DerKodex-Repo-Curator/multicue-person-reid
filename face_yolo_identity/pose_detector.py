@@ -92,14 +92,54 @@ class PosePersonDetector:
         return detections
 
 
-def draw_pose(img: np.ndarray, detection: PoseDetection, color: tuple[int, int, int] = (255, 180, 0)) -> None:
+COCO17_SKELETON: tuple[tuple[int, int], ...] = (
+    (5, 6),      # shoulders
+    (5, 7), (7, 9),
+    (6, 8), (8, 10),
+    (5, 11), (6, 12),
+    (11, 12),    # hips
+    (11, 13), (13, 15),
+    (12, 14), (14, 16),
+    (0, 1), (0, 2),
+    (1, 3), (2, 4),
+)
+
+
+def draw_pose(
+    img: np.ndarray,
+    detection: PoseDetection,
+    color: tuple[int, int, int] = (40, 230, 255),
+    *,
+    min_conf: float = 0.25,
+    radius: int = 7,
+    thickness: int = 4,
+) -> None:
+    """Draw a prominent COCO-17 skeleton, not just floating joints."""
     import cv2
 
     if detection.keypoints_xy is None:
         return
+    pts = detection.keypoints_xy
     conf = detection.keypoint_conf
-    for idx, pt in enumerate(detection.keypoints_xy):
-        if conf is not None and idx < len(conf) and conf[idx] < 0.25:
+
+    def visible(i: int) -> bool:
+        if i >= len(pts):
+            return False
+        if conf is not None and i < len(conf) and float(conf[i]) < min_conf:
+            return False
+        return True
+
+    for a, b in COCO17_SKELETON:
+        if not (visible(a) and visible(b)):
+            continue
+        pa = (int(round(pts[a][0])), int(round(pts[a][1])))
+        pb = (int(round(pts[b][0])), int(round(pts[b][1])))
+        cv2.line(img, pa, pb, (0, 0, 0), thickness + 3, cv2.LINE_AA)
+        cv2.line(img, pa, pb, color, thickness, cv2.LINE_AA)
+
+    for idx, pt in enumerate(pts):
+        if not visible(idx):
             continue
         x, y = int(round(pt[0])), int(round(pt[1]))
-        cv2.circle(img, (x, y), 3, color, -1)
+        cv2.circle(img, (x, y), radius + 2, (0, 0, 0), -1, cv2.LINE_AA)
+        cv2.circle(img, (x, y), radius, color, -1, cv2.LINE_AA)

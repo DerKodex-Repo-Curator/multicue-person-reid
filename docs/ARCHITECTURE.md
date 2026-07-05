@@ -23,3 +23,20 @@ This project is a multi-cue person tracking and re-identification prototype. It 
 ## Why this is multi-cue
 
 Low-resolution CCTV often cannot provide enough face pixels. The system therefore treats face recognition as the strongest cue only when the face is usable. Otherwise it uses tracker continuity, body geometry, silhouette, and ReID-like appearance as weaker supporting cues.
+
+## Current algorithm update
+
+The current live inference path separates **identification** from **locking**:
+
+- Identification: every candidate can be matched against the known face/body databases and labeled automatically.
+- Locking: optional focus mode used to follow one selected target and inspect continuity scores.
+
+This avoids the older behavior where pressing `L` felt required before the system would determine who a person was.
+
+Enrollment now has a unified pass:
+
+```text
+camera frame -> YOLO-pose person crop -> face cue + body cue + geometry cue + silhouette cue -> save aligned face/body samples
+```
+
+A threaded camera reader keeps the latest camera frame available while heavier face/body inference runs on the main UI loop. This reduces stale-buffer lag and abrupt close behavior on macOS camera devices.

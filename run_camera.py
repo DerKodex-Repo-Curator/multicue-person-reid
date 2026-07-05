@@ -10,6 +10,7 @@ import cv2
 
 from face_yolo_identity.apple_runtime import runtime_info
 from face_yolo_identity.body_db import KnownBodyDB
+from face_yolo_identity.camera_thread import ThreadedCamera
 from face_yolo_identity.body_fingerprint import body_fingerprint
 from face_yolo_identity.face_embedder import FaceEmbedder, FaceResult
 from face_yolo_identity.geometry_fingerprint import pose_geometry_fingerprint, silhouette_fingerprint
@@ -130,7 +131,9 @@ def main() -> None:
     parser.add_argument("--face-det-size", type=int, default=320, help="InsightFace detector size. 320 is faster; 640 is better for small faces.")
     parser.add_argument("--identity-every", type=int, default=5, help="Run known-person matching every N frames when not locked. Higher is faster.")
     parser.add_argument("--no-auto-identify", action="store_true", help="Do not auto-match known people before manual lock.")
-    parser.add_argument("--no-auto-lock", action="store_true", help="Show automatic identity guesses but do not lock automatically.")
+    parser.add_argument("--auto-lock", action="store_true", help="Automatically enter locked/focus mode after a high-confidence known-person match. Off by default; identity labels do not require locking.")
+    parser.add_argument("--no-auto-lock", action="store_true", help="Deprecated compatibility flag. Automatic lock is already off unless --auto-lock is used.")
+    parser.add_argument("--threaded-camera", action=argparse.BooleanOptionalAction, default=True, help="Read camera frames on a background thread to keep UI responsive during ML inference.")
     parser.add_argument("--auto-face-threshold", type=float, default=0.48, help="Face score required for automatic lock.")
     parser.add_argument("--auto-body-threshold", type=float, default=0.70, help="Body/ReID score required for automatic lock.")
     parser.add_argument("--font-scale", type=float, default=1.4, help="Scale overlay text. Try 1.8 or 2.2 if text is small.")
@@ -156,17 +159,22 @@ def main() -> None:
     known_body_db = KnownBodyDB.load(args.known_body_db) if args.known_body_db else None
     lock = IdentityLock(embedder, cfg["identity"] | cfg.get("outputs", {}))
 
-    cap = cv2.VideoCapture(args.camera)
-    if not cap.isOpened():
-        raise SystemExit(f"Could not open camera index {args.camera}")
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.camera_width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.camera_height)
+    if args.threaded_camera:
+        cam = ThreadedCamera(args.camera, width=args.camera_width, height=args.camera_height).start()
+        cap = None
+    else:
+        cam = None
+        cap = cv2.VideoCapture(args.camera)
+        if not cap.isOpened():
+            raise SystemExit(f"Could not open camera index {args.camera}")
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.camera_width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.camera_height)
 
     print("Controls: L=manual lock, R=reset lock, S=save crop/frame, D=debug, Q=quit")
     print(f"Runtime: AppleSilicon={rt.is_apple_silicon}, YOLO device={detector.device}, MPS={rt.torch_mps_available}, imgsz={args.imgsz}, pose={use_pose}")
     print(f"Face backend: {embedder.backend}; requested providers={args.face_provider}; active providers={getattr(embedder, 'providers', [])}")
     if not args.no_auto_identify and (known_db or known_body_db):
-        print("Automatic identity mode: ON. It will try to identify and lock known people without pressing L.")
+        print("Automatic identity mode: ON. Known people are labeled without pressing L. Use --auto-lock only for optional focus tracking.")
 
     locked = False
     recognized_name = None
@@ -181,9 +189,16 @@ def main() -> None:
     last_best_guess: IdentityGuess | None = None
 
     while True:
-        ok, frame = cap.read()
-        if not ok:
-            break
+        if cam is not None:
+            packet = cam.read()
+            if packet is None:
+                time.sleep(0.01)
+                continue
+            frame = packet.frame
+        else:
+            ok, frame = cap.read()
+            if not ok:
+                break
         frame_idx += 1
         now = time.perf_counter()
         dt = now - last_t
@@ -210,8 +225,7 @@ def main() -> None:
 
         score: CandidateScore | None = None
         auto_identify_now = (
-            not locked
-            and not args.no_auto_identify
+            not args.no_auto_identify
             and (known_db is not None or known_body_db is not None)
             and args.identity_every > 0
             and frame_idx % args.identity_every == 0
@@ -232,6 +246,7 @@ def main() -> None:
             last_best_guess = last_guesses[0] if last_guesses else None
 
         if not locked:
+            # Default mode: identify known people immediately. Locking is optional focus mode only.
             for idx, d in enumerate(detections):
                 x1, y1, x2, y2 = xyxy_to_int(d.box_xyxy, w, h)
                 cv2.rectangle(annotated, (x1, y1), (x2, y2), (170, 170, 170), 2)
@@ -261,7 +276,7 @@ def main() -> None:
                     recognized_name, recognized_score = known_db.match(score.face_result.embedding)
                 print("manual lock initialized")
 
-            if not locked and not args.no_auto_lock and last_best_guess is not None and should_auto_lock(last_best_guess, args):
+            if not locked and args.auto_lock and not args.no_auto_lock and last_best_guess is not None and should_auto_lock(last_best_guess, args):
                 score = lock.initialize(frame, last_best_guess.detection)
                 locked = True
                 recognized_name = last_best_guess.name
@@ -270,7 +285,7 @@ def main() -> None:
                 body_score = last_best_guess.body_score
                 print(f"auto-locked {recognized_name} via {last_best_guess.source} score={last_best_guess.score:.3f}")
 
-            readable_label(annotated, "Auto-ID active | L manual lock | R reset | D debug | Q quit", 20, 42, scale=args.font_scale, thickness=2)
+            readable_label(annotated, "Auto-ID labels active | L optional focus lock | R reset | D debug | Q quit", 20, 42, scale=args.font_scale, thickness=2)
         else:
             score = lock.update(frame, detections)
             if lock.is_lost():
@@ -349,7 +364,10 @@ def main() -> None:
             show = annotated
         cv2.imshow("run_camera", show)
 
-    cap.release()
+    if cam is not None:
+        cam.stop()
+    elif cap is not None:
+        cap.release()
     cv2.destroyAllWindows()
     print(f"Outputs written to: {out}")
 

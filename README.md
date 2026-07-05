@@ -9,7 +9,7 @@ A local prototype for person detection, tracking, face recognition, and body/ReI
 - Enrolls known faces into `outputs/known_faces.npz`.
 - Enrolls body/ReID samples into `outputs/known_bodies.npz`.
 - Automatically attempts known-person identity matching during inference.
-- Allows manual lock with `L` when you want to select a target yourself.
+- Labels known people automatically during inference; manual lock is optional focus tracking only.
 - Supports Apple Silicon optimization through PyTorch MPS for YOLO when available.
 - Uses InsightFace with a fixed-shape CoreML MLProgram fast path on Apple Silicon, with automatic CPU fallback.
 
@@ -30,23 +30,19 @@ Check cameras:
 uv run list_cameras.py --preview
 ```
 
-## Face enrollment
+## Recommended unified enrollment
+
+Capture face and body/ReID samples in the same pass so `front`, `close`, and `far` mean the same distance for both modalities.
 
 ```bash
-uv run capture_enroll.py --person jose --camera 0 --samples 20 --clear-existing --start-delay 8
+uv run capture_unified_enroll.py --person jose --camera 0 --samples 18 --clear-existing --start-delay 6
 uv run enroll.py --known-dir known_people --db outputs/known_faces.npz
-```
-
-The smart face enrollment flow asks for actual head-turn buckets such as `FRONT`, `TURN_LEFT`, `TURN_RIGHT`, `CLOSE`, and `FAR`.
-
-## Body/ReID enrollment
-
-```bash
-uv run capture_body_enroll.py --person jose --camera 0 --samples 24 --clear-existing --start-delay 8
 uv run enroll_body.py --known-dir known_people --db outputs/known_bodies.npz
 ```
 
-Body/ReID enrollment is separate from face enrollment. It is where `BACK`, `LEFT`, `RIGHT`, `CLOSE`, and `FAR` body samples belong.
+The unified flow asks for `FRONT`, `TURN_LEFT`, `TURN_RIGHT`, `CLOSE`, `FAR`, and `BACK`. Left/right uses estimated head yaw when a face is visible, not just where the person appears in the frame. Back/no-face samples are saved only for body/ReID.
+
+Legacy separate scripts still exist: `capture_enroll.py` for face-only and `capture_body_enroll.py` for body/ReID-only.
 
 ## Live inference
 
@@ -91,9 +87,9 @@ uv run run_camera.py \
 
 ## Automatic identity vs lock
 
-The system no longer requires pressing `L` just to determine a known person. If you provide face/body databases, it tries to identify candidates automatically every few frames.
+The system does not require pressing `L` to determine a known person. If you provide face/body databases, it labels candidates automatically every few frames.
 
-Manual lock still exists:
+Manual lock still exists as optional focus mode:
 
 - `L`: lock the current first/largest-left candidate
 - `R`: reset lock
@@ -117,8 +113,9 @@ Locking means "follow this selected target across future frames." It does not au
 --face-det-size 320    # faster face detection
 --face-det-size 640    # better for small faces
 --identity-every 5     # known-person matching interval
---no-auto-lock         # show guesses but do not lock automatically
+--auto-lock            # optional: enter focus lock automatically after a strong match
 --no-auto-identify     # disable automatic known-person matching
+--threaded-camera      # default: keep camera capture responsive during heavy inference
 --font-scale 1.8       # larger overlay text
 --display-scale 0.75   # smaller output window
 ```
