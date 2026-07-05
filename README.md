@@ -11,7 +11,7 @@ A local prototype for person detection, tracking, face recognition, and body/ReI
 - Automatically attempts known-person identity matching during inference.
 - Allows manual lock with `L` when you want to select a target yourself.
 - Supports Apple Silicon optimization through PyTorch MPS for YOLO when available.
-- Uses InsightFace for face embeddings and can prefer CoreML through ONNX Runtime if the provider exists.
+- Uses InsightFace for face embeddings and uses CPU for InsightFace by default because ONNX Runtime CoreML can fail on SCRFD/InsightFace dynamic outputs; CoreML is available only as an experimental explicit option.
 
 ## Install
 
@@ -111,8 +111,9 @@ Locking means "follow this selected target across future frames." It does not au
 --device cpu           # force CPU
 --imgsz 320            # faster YOLO
 --imgsz 640            # more accurate YOLO
---face-provider auto   # use CoreML for InsightFace only if available
---face-provider coreml # prefer ONNX Runtime CoreML provider
+--face-provider auto   # default: CPU for InsightFace, safest on macOS
+--face-provider cpu    # force CPU explicitly
+--face-provider coreml # experimental; may fail on InsightFace/SCRFD dynamic shapes
 --face-det-size 320    # faster face detection
 --face-det-size 640    # better for small faces
 --identity-every 5     # known-person matching interval
@@ -137,3 +138,8 @@ See the `docs/` folder:
 ## Important limitation
 
 A clear face can support identity. Low-resolution distant footage often cannot. Body/ReID features are useful for continuity and experiments, but they are weaker than face recognition and can be affected by clothing, bags, pose, and camera angle.
+
+
+## CoreML note
+
+The default `--face-provider auto` is intentionally CPU for InsightFace. Some macOS ONNX Runtime builds expose `CoreMLExecutionProvider`, but InsightFace/SCRFD may crash with a static/dynamic output-shape error. Keep YOLO on Apple GPU with `--device auto`; keep InsightFace on CPU unless you are explicitly testing CoreML.

@@ -40,16 +40,20 @@ def available_onnx_providers() -> list[str]:
 
 
 def select_face_providers(requested: str = "auto") -> list[str]:
+    """Select ONNX Runtime providers for InsightFace.
+
+    IMPORTANT: `auto` intentionally uses CPU for InsightFace. Some macOS
+    onnxruntime builds expose CoreMLExecutionProvider, but SCRFD/InsightFace
+    detection can fail at runtime with dynamic/static output-shape mismatches.
+    YOLO can still use Apple Silicon GPU through PyTorch MPS; face detection and
+    recognition stay on CPU unless the user explicitly opts into CoreML.
+    """
     requested = (requested or "auto").lower()
     providers = available_onnx_providers()
-    if requested == "cpu":
+    if requested in {"auto", "cpu"}:
         return ["CPUExecutionProvider"]
     if requested == "coreml":
         return ["CoreMLExecutionProvider", "CPUExecutionProvider"] if "CoreMLExecutionProvider" in providers else ["CPUExecutionProvider"]
-    # Auto: prefer CoreML if this onnxruntime build exposes it. Many macOS
-    # installs only expose CPUExecutionProvider, so this must be conditional.
-    if "CoreMLExecutionProvider" in providers:
-        return ["CoreMLExecutionProvider", "CPUExecutionProvider"]
     return ["CPUExecutionProvider"]
 
 

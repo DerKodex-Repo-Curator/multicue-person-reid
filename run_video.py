@@ -50,7 +50,7 @@ def main() -> None:
         metadata_path.unlink()
 
     detector = build_detector(cfg, use_pose)
-    embedder = FaceEmbedder()
+    embedder = FaceEmbedder(provider=args.face_provider, det_size=(args.face_det_size, args.face_det_size))
     known_db = KnownFaceDB.load(args.known_db) if args.known_db else None
     lock = IdentityLock(embedder, cfg["identity"] | cfg.get("outputs", {}))
 

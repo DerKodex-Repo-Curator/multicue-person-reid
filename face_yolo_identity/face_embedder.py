@@ -30,6 +30,7 @@ class FaceEmbedder:
         self.cascade = None
         self.providers: list[str] = []
         self.det_size = det_size
+        self.provider_request = provider
         try:
             from insightface.app import FaceAnalysis  # type: ignore
             from .apple_runtime import select_face_providers
@@ -41,15 +42,47 @@ class FaceEmbedder:
             self.app.prepare(ctx_id=0, det_size=det_size)
             self.backend = "insightface"
         except Exception:
-            cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-            self.cascade = cv2.CascadeClassifier(cascade_path)
+            self._init_opencv_fallback()
+
+    def _init_opencv_fallback(self) -> None:
+        cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        self.cascade = cv2.CascadeClassifier(cascade_path)
+        self.app = None
+        self.providers = []
+        self.backend = "opencv-fallback"
+
+    def _reinitialize_insightface_cpu(self) -> bool:
+        """Fallback from an unstable ONNX/CoreML provider to CPU at runtime."""
+        try:
+            from insightface.app import FaceAnalysis  # type: ignore
+
+            print("InsightFace provider failed at runtime; retrying with CPUExecutionProvider.")
+            self.providers = ["CPUExecutionProvider"]
+            self.app = FaceAnalysis(name="buffalo_l", providers=self.providers)
+            self.app.prepare(ctx_id=0, det_size=self.det_size)
+            self.backend = "insightface"
+            return True
+        except Exception as exc:
+            print(f"InsightFace CPU fallback failed; using OpenCV fallback: {exc}")
+            self._init_opencv_fallback()
+            return False
 
     def best_face(self, bgr_image: np.ndarray) -> FaceResult:
         if bgr_image is None or bgr_image.size == 0:
             return FaceResult(None, None, None, self.backend)
 
         if self.app is not None:
-            faces = self.app.get(bgr_image)
+            try:
+                faces = self.app.get(bgr_image)
+            except Exception as exc:
+                if "CoreMLExecutionProvider" in self.providers:
+                    print(f"InsightFace CoreML runtime error: {exc}")
+                    if self._reinitialize_insightface_cpu():
+                        faces = self.app.get(bgr_image) if self.app is not None else []
+                    else:
+                        faces = []
+                else:
+                    raise
             if not faces:
                 return FaceResult(None, None, None, self.backend)
             faces = sorted(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]), reverse=True)

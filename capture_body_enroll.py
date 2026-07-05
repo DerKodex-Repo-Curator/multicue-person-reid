@@ -268,6 +268,8 @@ def main() -> None:
     parser.add_argument("--duplicate-threshold", type=float, default=0.985)
     parser.add_argument("--no-sound", action="store_true")
     parser.add_argument("--beep-only", action="store_true", help="Use terminal bell instead of speech.")
+    parser.add_argument("--face-provider", default="auto", choices=["auto", "cpu", "coreml"], help="InsightFace ONNX provider for detecting whether the body view has a face. auto/cpu uses CPU; coreml is experimental.")
+    parser.add_argument("--face-det-size", type=int, default=320, help="InsightFace detector size.")
     args = parser.parse_args()
 
     body_dir = Path(args.out) / args.person / "body"
@@ -280,7 +282,8 @@ def main() -> None:
         print(f"Cleared existing body samples in {body_dir} and {frame_dir}")
 
     detector = PosePersonDetector()
-    embedder = FaceEmbedder()
+    embedder = FaceEmbedder(provider=args.face_provider, det_size=(args.face_det_size, args.face_det_size))
+    print(f"Face backend: {embedder.backend}; providers={getattr(embedder, 'providers', [])}; det_size={args.face_det_size}")
     audio = AudioPrompter(enabled=not args.no_sound, speech=not args.beep_only, min_interval=2.0)
 
     cap = cv2.VideoCapture(args.camera)

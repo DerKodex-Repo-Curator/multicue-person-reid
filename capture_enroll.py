@@ -289,7 +289,9 @@ def main() -> None:
     parser.add_argument("--font-scale", type=float, default=2.0, help="Overlay text size.")
     parser.add_argument("--display-scale", type=float, default=1.0, help="Scale preview window.")
     parser.add_argument("--no-sound", action="store_true", help="Disable speech/beep guidance.")
-    parser.add_argument("--beep-only", action="store_true", help="Use terminal bell instead of macOS speech.")
+    parser.add_argument("--beep-only", action="store_true", help="Use terminal bell instead of speech.")
+    parser.add_argument("--face-provider", default="auto", choices=["auto", "cpu", "coreml"], help="InsightFace ONNX provider. auto/cpu uses CPU; coreml is experimental on macOS.")
+    parser.add_argument("--face-det-size", type=int, default=320, help="InsightFace detector size. 320 is faster; 640 may detect smaller faces.")
     args = parser.parse_args()
 
     person_dir = Path(args.out) / args.person / "face"
@@ -303,7 +305,9 @@ def main() -> None:
     if not cap.isOpened():
         raise SystemExit(f"Could not open camera index {args.camera}")
 
-    embedder = None if args.manual or args.fixed_auto else FaceEmbedder()
+    embedder = None if args.manual or args.fixed_auto else FaceEmbedder(provider=args.face_provider, det_size=(args.face_det_size, args.face_det_size))
+    if embedder is not None:
+        print(f"Face backend: {embedder.backend}; providers={getattr(embedder, 'providers', [])}; det_size={args.face_det_size}")
     saved_embeddings: list[np.ndarray] = []
     bucket_counts = {"front": 0, "turn_left": 0, "turn_right": 0, "close": 0, "far": 0}
     audio = AudioPrompter(enabled=not args.no_sound, speech=not args.beep_only, min_interval=2.0)

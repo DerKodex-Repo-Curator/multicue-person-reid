@@ -64,3 +64,16 @@ uv run run_camera.py --camera 1
 ## InsightFace downloads model on first run
 
 The first enrollment or inference run may download the InsightFace `buffalo_l` model. Later runs use the cached model.
+
+
+## InsightFace CoreML shape error
+
+If you see an ONNX Runtime error like `CoreML static output shape ... inferred shape ... have different ranks`, the CoreML provider failed while running InsightFace/SCRFD face detection. This is a provider/model compatibility issue, not a camera problem.
+
+Fix: use the default CPU face provider:
+
+```bash
+uv run capture_enroll.py --person jose --camera 1 --samples 20 --clear-existing --start-delay 8 --face-provider cpu
+```
+
+YOLO can still use Apple Silicon GPU through `--device auto` or `--device mps`. InsightFace CPU is safer unless you explicitly want to experiment with CoreML.
