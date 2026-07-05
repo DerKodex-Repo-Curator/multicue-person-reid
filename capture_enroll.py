@@ -116,59 +116,38 @@ def _quality_check(
     return QualityResult(True, "good sample", face, sharp, bright, face_size, face_area_ratio, duplicate_sim, bucket)
 
 
-def _draw_text_with_bg(
-    frame: np.ndarray,
+def _draw_translucent_rect(img: np.ndarray, x1: int, y1: int, x2: int, y2: int, color=(0, 0, 0), alpha: float = 0.48) -> None:
+    h, w = img.shape[:2]
+    x1, x2 = max(0, x1), min(w, x2)
+    y1, y2 = max(0, y1), min(h, y2)
+    if x2 <= x1 or y2 <= y1:
+        return
+    roi = img[y1:y2, x1:x2]
+    overlay = np.full_like(roi, color, dtype=np.uint8)
+    cv2.addWeighted(overlay, alpha, roi, 1.0 - alpha, 0, dst=roi)
+
+
+def _put_readable_text(
+    img: np.ndarray,
     text: str,
     org: tuple[int, int],
     *,
     font_scale: float,
-    color: tuple[int, int, int] = (255, 255, 255),
-    bg: tuple[int, int, int] | None = None,
+    color=(255, 255, 255),
     thickness: int = 2,
 ) -> None:
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    if bg is not None:
-        (tw, th), base = cv2.getTextSize(text, font, font_scale, thickness)
-        x, y = org
-        cv2.rectangle(frame, (x - 8, y - th - 8), (x + tw + 8, y + base + 8), bg, -1)
-    cv2.putText(frame, text, org, font, font_scale, color, thickness, cv2.LINE_AA)
+    # Black outline + foreground text keeps labels readable without covering the camera feed.
+    cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), thickness + 3, cv2.LINE_AA)
+    cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, thickness, cv2.LINE_AA)
 
 
-def _draw_bucket_panel(
-    frame: np.ndarray,
-    bucket_counts: dict[str, int],
-    *,
-    samples: int,
-    x: int,
-    y: int,
-    width: int,
-    font_scale: float,
-) -> None:
-    buckets = ["center", "left", "right", "close", "far"]
-    goal = max(1, int(np.ceil(samples / max(len(buckets), 1))))
-    row_h = int(34 * font_scale)
-    title_y = y + int(28 * font_scale)
-    _draw_text_with_bg(frame, "BUCKETS NEEDED", (x, title_y), font_scale=font_scale, color=(255, 255, 255), thickness=2)
-
-    for i, name in enumerate(buckets):
-        count = bucket_counts.get(name, 0)
-        row_y = title_y + int((i + 1) * row_h)
-        needed = max(0, goal - count)
-        status = "OK" if needed == 0 else f"need {needed}"
-        label = f"{name.upper():6s} {count:02d}/{goal:02d}  {status}"
-        color = (90, 255, 90) if needed == 0 else (90, 220, 255)
-        _draw_text_with_bg(frame, label, (x, row_y), font_scale=font_scale * 0.82, color=color, thickness=2)
-
-        bar_x = x + int(width * 0.56)
-        bar_y = row_y - int(20 * font_scale)
-        bar_w = int(width * 0.36)
-        bar_h = max(8, int(12 * font_scale))
-        cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (70, 70, 70), -1)
-        fill_w = int(bar_w * min(count / goal, 1.0))
-        cv2.rectangle(frame, (bar_x, bar_y), (bar_x + fill_w, bar_y + bar_h), color, -1)
+def _draw_bar(img: np.ndarray, x: int, y: int, w: int, h: int, frac: float, *, fill=(80, 220, 80)) -> None:
+    frac = max(0.0, min(1.0, frac))
+    cv2.rectangle(img, (x, y), (x + w, y + h), (75, 75, 75), 1)
+    cv2.rectangle(img, (x, y), (x + int(w * frac), y + h), fill, -1)
 
 
-def _draw_panel(
+def _draw_overlay(
     frame: np.ndarray,
     *,
     person: str,
@@ -178,60 +157,71 @@ def _draw_panel(
     qr: QualityResult | None,
     start_remaining: float | None,
     font_scale: float,
-    bucket_counts: dict[str, int] | None = None,
+    bucket_counts: dict[str, int],
 ) -> None:
     h, w = frame.shape[:2]
-    # Use a large, opaque top panel. Enrollment is a guided UI, so readability matters more than preserving video area.
-    panel_h = min(h - 10, max(int(300 * font_scale), int(h * 0.34)))
-    cv2.rectangle(frame, (0, 0), (w, panel_h), (0, 0, 0), -1)
-    cv2.rectangle(frame, (0, panel_h - 3), (w, panel_h), (70, 70, 70), -1)
+    fs = max(0.55, font_scale)
+    small = max(0.50, fs * 0.76)
+    line_h = int(34 * fs)
+    pad = int(14 * fs)
 
-    line_h = int(42 * font_scale)
-    x0 = int(18 * font_scale)
-    y0 = int(44 * font_scale)
+    # Top-left translucent status card. It overlays the video instead of shrinking it.
+    card_w = min(w - 20, int(760 * fs))
+    card_h = int(150 * fs)
+    _draw_translucent_rect(frame, 10, 10, 10 + card_w, 10 + card_h, alpha=0.46)
 
-    def put(text: str, line: int, color=(255, 255, 255), scale=1.0, thickness=2):
-        _draw_text_with_bg(
-            frame,
-            text,
-            (x0, y0 + int(line * line_h)),
-            font_scale=font_scale * scale,
-            color=color,
-            thickness=thickness,
-        )
-
-    put(f"ENROLL: {person}    SAVED {saved}/{samples}    {mode}", 0, (255, 255, 255), 1.0, 2)
+    y = 10 + pad + int(18 * fs)
+    _put_readable_text(frame, f"Enroll: {person}   {saved}/{samples}   {mode}", (10 + pad, y), font_scale=fs, color=(255, 255, 255), thickness=2)
+    y += line_h
 
     if start_remaining is not None and start_remaining > 0:
-        put(f"STARTING IN {start_remaining:.1f}s - step back, face camera", 1, (80, 220, 255), 0.92, 2)
-        put("Goal: front / left / right / close / far", 2, (220, 220, 220), 0.78, 1)
+        _put_readable_text(frame, f"Starting in {start_remaining:.1f}s - step into view", (10 + pad, y), font_scale=small, color=(80, 230, 255), thickness=2)
     elif qr is None:
-        put("Waiting for frame...", 1, (80, 220, 255), 0.92, 2)
+        _put_readable_text(frame, "Waiting for camera / face...", (10 + pad, y), font_scale=small, color=(80, 230, 255), thickness=2)
     else:
-        color = (60, 255, 60) if qr.ok else (80, 180, 255)
-        decision = "SAVE" if qr.ok else "SKIP"
-        put(f"{decision}: {qr.reason}", 1, color, 0.96, 2)
-        put(
+        color = (80, 255, 80) if qr.ok else (70, 210, 255)
+        _put_readable_text(frame, f"Decision: {qr.reason}", (10 + pad, y), font_scale=small, color=color, thickness=2)
+        y += line_h
+        _put_readable_text(
+            frame,
             f"face {qr.face_size or 0}px | sharp {qr.sharpness or 0:.0f} | bright {qr.brightness or 0:.0f} | bucket {qr.bucket or '-'}",
-            2,
-            (235, 235, 235),
-            0.74,
-            2,
+            (10 + pad, y),
+            font_scale=small,
+            color=(245, 245, 245),
+            thickness=2,
         )
-        sim = "-" if qr.duplicate_sim is None else f"{qr.duplicate_sim:.3f}"
-        put(f"similarity {sim} | move slowly to fill missing buckets", 3, (220, 220, 220), 0.70, 1)
         if qr.face and qr.face.box_xyxy:
             x1, y1, x2, y2 = qr.face.box_xyxy
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0) if qr.ok else (0, 180, 255), max(3, int(3 * font_scale)))
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0) if qr.ok else (0, 180, 255), max(2, int(3 * fs)))
 
-    put("SPACE force-save   Q quit", 5, (230, 230, 230), 0.70, 1)
+    # Bottom-left controls chip.
+    ctrl_text = "SPACE force save   Q quit"
+    (tw, th), _ = cv2.getTextSize(ctrl_text, cv2.FONT_HERSHEY_SIMPLEX, small, 2)
+    _draw_translucent_rect(frame, 10, h - th - 28, 10 + tw + 2 * pad, h - 8, alpha=0.42)
+    _put_readable_text(frame, ctrl_text, (10 + pad, h - 18), font_scale=small, color=(235, 235, 235), thickness=2)
 
-    if bucket_counts is not None:
-        bucket_x = int(w * 0.60)
-        bucket_w = max(260, w - bucket_x - int(18 * font_scale))
-        cv2.rectangle(frame, (bucket_x - 16, int(24 * font_scale)), (w - 12, panel_h - 18), (20, 20, 20), -1)
-        _draw_bucket_panel(frame, bucket_counts, samples=samples, x=bucket_x, y=int(26 * font_scale), width=bucket_w, font_scale=font_scale)
-
+    # Compact bottom-right bucket card. This avoids taking away camera area.
+    buckets = ["center", "left", "right", "close", "far"]
+    target_each = max(1, int(np.ceil(samples / max(len(buckets), 1) * 0.55)))
+    b_fs = max(0.48, fs * 0.70)
+    b_line = int(28 * fs)
+    panel_w = min(w - 20, int(420 * fs))
+    panel_h = int((len(buckets) + 2) * b_line + 12)
+    bx1 = max(10, w - panel_w - 10)
+    by1 = max(10, h - panel_h - 10)
+    _draw_translucent_rect(frame, bx1, by1, bx1 + panel_w, by1 + panel_h, alpha=0.48)
+    _put_readable_text(frame, "Bucket progress", (bx1 + pad, by1 + int(24 * fs)), font_scale=b_fs, color=(255, 255, 255), thickness=2)
+    yy = by1 + int(24 * fs) + b_line
+    bar_x = bx1 + int(145 * fs)
+    bar_w = max(70, panel_w - int(175 * fs))
+    for name in buckets:
+        count = int(bucket_counts.get(name, 0))
+        ok = count >= target_each
+        col = (100, 255, 100) if ok else (90, 210, 255)
+        label = f"{name.upper():<6} {count}/{target_each}"
+        _put_readable_text(frame, label, (bx1 + pad, yy), font_scale=b_fs, color=col, thickness=2)
+        _draw_bar(frame, bar_x, yy - int(17 * fs), bar_w, max(8, int(10 * fs)), count / max(target_each, 1), fill=col)
+        yy += b_line
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Capture enrollment images from webcam/Continuity Camera.")
@@ -250,7 +240,7 @@ def main() -> None:
     parser.add_argument("--max-brightness", type=float, default=225.0, help="Maximum face brightness.")
     parser.add_argument("--duplicate-threshold", type=float, default=0.988, help="Skip samples with embedding similarity above this threshold.")
     parser.add_argument("--no-balance-buckets", action="store_true", help="Do not balance center/left/right/close/far samples.")
-    parser.add_argument("--font-scale", type=float, default=1.35, help="Overlay text size. Increase if the preview text is hard to read.")
+    parser.add_argument("--font-scale", type=float, default=1.15, help="Overlay text size.")
     parser.add_argument("--display-scale", type=float, default=1.0, help="Scale preview window.")
     args = parser.parse_args()
 
@@ -307,7 +297,7 @@ def main() -> None:
             qr = None
 
         start_remaining = max(0.0, args.start_delay - elapsed) if waiting else None
-        _draw_panel(preview, person=args.person, saved=saved, samples=args.samples, mode=mode, qr=qr, start_remaining=start_remaining, font_scale=args.font_scale, bucket_counts=bucket_counts)
+        _draw_overlay(preview, person=args.person, saved=saved, samples=args.samples, mode=mode, qr=qr, start_remaining=start_remaining, font_scale=args.font_scale, bucket_counts=bucket_counts)
 
         show = cv2.resize(preview, None, fx=args.display_scale, fy=args.display_scale, interpolation=cv2.INTER_AREA) if args.display_scale != 1.0 else preview
         cv2.imshow("capture_enroll", show)

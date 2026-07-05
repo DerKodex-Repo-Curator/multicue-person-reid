@@ -27,15 +27,15 @@ uv pip install -r requirements.txt
 `insightface` and `onnxruntime` are included in `requirements.txt` for real face embeddings. If they fail on your machine, the code can still fall back to non-face modes, but the intended install is the single requirements file.
 
 
-## Smart hands-free webcam enrollment
+## Hands-free webcam enrollment
 
-Use smart automatic mode when you are not close enough to press SPACE:
+Use automatic mode when you are not close enough to press SPACE:
 
 ```bash
-python capture_enroll.py --person jose --camera 1 --samples 50 --clear-existing --start-delay 8
+python capture_enroll.py --person jose --samples 30 --start-delay 8 --delay 1.5
 ```
 
-This waits 8 seconds, then saves only frames that pass face size, sharpness, brightness, and diversity checks. The overlay now shows large text plus bucket progress for `center`, `left`, `right`, `close`, and `far`. Manual capture is still available with `--manual`.
+This waits 8 seconds, then captures one image every 1.5 seconds. Manual capture is still available with `--manual`.
 
 
 ## Camera selection on macOS
@@ -53,7 +53,7 @@ python capture_enroll.py --person jose --camera 1 --samples 30 --start-delay 8 -
 python run_camera.py --camera 1 --known-db outputs/known_faces.npz
 ```
 
-To choose a specific built-in or external camera, use the index shown by `list_cameras.py --preview`. If Continuity Camera is not desired, disable it temporarily or select another camera index.
+To force a specific camera, choose the correct index from `list_cameras.py --preview`. macOS may expose built-in, phone-as-webcam, external, and virtual cameras in different orders.
 
 
 ## `lap` / ByteTrack note
@@ -110,8 +110,8 @@ uv run run_camera.py --camera 1 --known-db outputs/known_faces.npz --font-scale 
 If the recognition is weak, re-enroll with quality-gated automatic capture instead of a fixed timer:
 
 ```bash
-uv run capture_enroll.py --person jose --camera 1 --samples 50 --clear-existing --start-delay 8 --font-scale 1.6
+uv run capture_enroll.py --person jose --camera 1 --samples 50 --clear-existing --start-delay 8 --font-scale 1.4
 uv run enroll.py --known-dir known_people --db outputs/known_faces.npz
 ```
 
-The capture window will only save frames when the face is detected, large enough, sharp enough, reasonably exposed, and not too similar to already-saved samples. Move slowly and vary distance/angle. Use `--font-scale 1.6` or higher if the overlay is still too small.
+The capture window will only save frames when the face is detected, large enough, sharp enough, reasonably exposed, and not too similar to already-saved samples. Move slowly and vary distance/angle.
