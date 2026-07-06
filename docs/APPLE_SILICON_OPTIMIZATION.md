@@ -8,7 +8,7 @@ The project uses different acceleration paths for different workloads:
 
 ```text
 YOLO / YOLO-pose  -> PyTorch MPS when available
-InsightFace       -> ONNX Runtime CoreML MLProgram when available, CPU fallback
+InsightFace       -> ONNX Runtime CPU by default; CoreML is opt-in/experimental, CPU fallback
 Camera capture    -> threaded reader to reduce UI staleness
 ```
 
@@ -50,13 +50,13 @@ Force CPU:
 --face-provider cpu
 ```
 
-Force CoreML preference:
+Experimental CoreML preference:
 
 ```bash
 --face-provider coreml
 ```
 
-If CoreML fails at runtime, the face embedder should fall back to CPU while YOLO can continue using MPS.
+Use this only for testing. If CoreML is slower or fails at runtime, force CPU with `--face-provider cpu` while YOLO continues using MPS.
 
 ## Speed knobs
 
@@ -84,7 +84,7 @@ Face detector size:
 Known-person matching interval:
 
 ```bash
---identity-every 10   # faster
+--identity-every 15   # faster
 --identity-every 1    # more responsive but slower
 ```
 
@@ -137,3 +137,7 @@ The camera HUD now uses a thinner text style over translucent black cards. The i
 
 The deprecated Ultralytics `half` inference argument is no longer passed during normal runs. The `--half` CLI option is kept only as a compatibility no-op so older commands do not break. Use `--quantize` to request quantized inference when the installed Ultralytics backend supports it; unsupported `quantize` requests are retried without quantization.
 
+
+## Default FPS protections
+
+Live inference now keeps the debug panel off by default, writes metadata every 5 frames, and runs expensive known-person matching every 10 frames on at most 2 largest candidates. Use `--debug-panel`, `--metadata-every 1`, `--identity-every 1`, or a larger `--max-auto-candidates` only when you need deeper diagnostics.

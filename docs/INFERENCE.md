@@ -20,7 +20,7 @@ uv run run_camera.py \
 Matching frequency is controlled by:
 
 ```bash
---identity-every 5
+--identity-every 10
 ```
 
 Lower values update labels more often but reduce FPS. Higher values improve FPS but labels refresh more slowly.
@@ -36,7 +36,7 @@ Controls:
 - `L`: lock/focus current candidate
 - `R`: reset lock/focus state
 - `S`: save current frame/person/face crop
-- `D`: toggle debug panel
+- `D`: toggle debug panel. It starts hidden by default for FPS.
 - `Q`: quit
 
 Enable automatic focus lock after a strong known-person match:
@@ -173,3 +173,16 @@ The camera HUD now uses a thinner text style over translucent black cards. The i
 
 The deprecated Ultralytics `half` inference argument is no longer passed during normal runs. The `--half` CLI option is kept only as a compatibility no-op so older commands do not break. Use `--quantize` to request quantized inference when the installed Ultralytics backend supports it; unsupported `quantize` requests are retried without quantization.
 
+
+## FPS defaults
+
+The live loop avoids expensive diagnostics by default:
+
+```bash
+--identity-every 10
+--max-auto-candidates 2
+--metadata-every 5
+# debug panel hidden unless --debug-panel or D is used
+```
+
+Lower `--identity-every` and higher `--max-auto-candidates` improve responsiveness in crowded scenes but cost FPS.

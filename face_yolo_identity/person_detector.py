@@ -74,6 +74,8 @@ class PersonDetector:
             raise
         except Exception as exc:
             if self.quantize and "quantize" in kwargs and "quantize" in str(exc).lower():
+                print("WARNING: quantize unsupported by this Ultralytics/backend; disabling for the rest of this run.")
+                self.quantize = False
                 kwargs.pop("quantize", None)
                 result = self.model.predict(frame, **kwargs)[0]
             else:
@@ -95,6 +97,8 @@ class PersonDetector:
                 result = self.model.track(frame, **kwargs)[0]
             except Exception as exc:
                 if self.quantize and "quantize" in kwargs and "quantize" in str(exc).lower():
+                    print("WARNING: quantize unsupported by this Ultralytics/backend; disabling for the rest of this run.")
+                    self.quantize = False
                     kwargs.pop("quantize", None)
                     result = self.model.track(frame, **kwargs)[0]
                 else:

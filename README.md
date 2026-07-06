@@ -21,7 +21,7 @@ Main capabilities:
 - Keeps manual lock as optional focus tracking for debugging one target.
 - Uses threaded camera capture to reduce UI freezes during inference and enrollment.
 - Uses PyTorch MPS for YOLO on Apple Silicon when available.
-- Uses an InsightFace CoreML MLProgram path on Apple Silicon when available, with CPU fallback.
+- Uses PyTorch MPS for YOLO on Apple Silicon; InsightFace defaults to CPU because the CoreML path can be slower/unstable on some ONNX Runtime builds.
 
 ## Repository layout
 
@@ -166,9 +166,14 @@ uv run run_camera.py \
   --known-body-db outputs/known_bodies.npz \
   --device auto \
   --imgsz 416 \
+  --face-provider auto \
   --face-det-size 320 \
+  --identity-every 10 \
+  --max-auto-candidates 2 \
   --font-scale 1.6
 ```
+
+The debug panel is now **off by default** because it adds overlay work every frame. Press `D` or pass `--debug-panel` only when you need diagnostics.
 
 Faster run:
 
@@ -179,7 +184,9 @@ uv run run_camera.py \
   --known-body-db outputs/known_bodies.npz \
   --device auto \
   --imgsz 320 \
-  --identity-every 10 \
+  --identity-every 15 \
+  --max-auto-candidates 1 \
+  --metadata-every 10 \
   --no-pose
 ```
 
@@ -193,7 +200,9 @@ uv run run_camera.py \
   --device auto \
   --imgsz 640 \
   --face-det-size 640 \
-  --identity-every 1
+  --identity-every 1 \
+  --max-auto-candidates 4 \
+  --debug-panel
 ```
 
 
@@ -227,7 +236,7 @@ Manual lock is now only optional focus tracking:
 - `L`: lock/focus the current candidate.
 - `R`: reset lock/focus state.
 - `S`: save current frame/person/face crop.
-- `D`: toggle debug panel.
+- `D`: toggle debug panel. The panel starts hidden by default for FPS.
 - `Q`: quit.
 
 Locking means “follow this chosen target across future frames.” It does **not** mean the identity is confirmed.
@@ -240,12 +249,14 @@ Locking means “follow this chosen target across future frames.” It does **no
 --device cpu           # force CPU
 --imgsz 320            # faster YOLO
 --imgsz 640            # more accurate YOLO
---face-provider auto   # CoreML MLProgram on Apple Silicon; CPU/fallback elsewhere
+--face-provider auto   # default: stable CPU InsightFace path
 --face-provider cpu    # force InsightFace CPU explicitly
---face-provider coreml # force CoreML path when available
+--face-provider coreml # experimental; may be slower or unstable depending on ONNX Runtime
 --face-det-size 320    # faster face detection
 --face-det-size 640    # better for small faces
---identity-every 5     # known-person matching interval
+--identity-every 10    # default known-person matching interval; lower is more responsive but slower
+--max-auto-candidates 2 # default: only run face/body matching on the largest candidates per cycle
+--metadata-every 5      # default: reduce per-frame disk I/O
 --face-match-threshold 0.46
 --body-match-threshold 0.82
 --body-match-margin 0.08
@@ -269,6 +280,7 @@ Start here:
 - [`docs/ADAPTIVE_ENROLLMENT.md`](docs/ADAPTIVE_ENROLLMENT.md) — bucket targets and sample quality.
 - [`docs/INFERENCE.md`](docs/INFERENCE.md) — automatic identity mode, lock mode, and debugging.
 - [`docs/APPLE_SILICON_OPTIMIZATION.md`](docs/APPLE_SILICON_OPTIMIZATION.md) — MPS/CoreML runtime notes.
+- [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) — FPS defaults, bottlenecks, and fast/accurate presets.
 - [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) — what the system can and cannot claim.
 - [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — common setup/runtime fixes.
 - [`docs/PRIVACY_AND_ETHICS.md`](docs/PRIVACY_AND_ETHICS.md) — handling biometric-like local data.

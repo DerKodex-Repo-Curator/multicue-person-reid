@@ -155,9 +155,11 @@ def main() -> None:
     parser.add_argument("--half", action="store_true", help="Deprecated compatibility flag; ignored to avoid Ultralytics 'half' deprecation warnings. Use --quantize when supported.")
     parser.add_argument("--quantize", action="store_true", help="Request Ultralytics quantized inference when supported by the installed version/backend.")
     parser.add_argument("--tracker", default="bytetrack.yaml", help="Ultralytics tracker YAML, e.g. bytetrack.yaml or botsort.yaml.")
-    parser.add_argument("--face-provider", default="auto", choices=["auto", "cpu", "coreml"], help="InsightFace ONNX provider preference.")
+    parser.add_argument("--face-provider", default="auto", choices=["auto", "cpu", "coreml"], help="InsightFace ONNX provider preference. auto uses CPU for stable Apple Silicon FPS; coreml is opt-in/experimental.")
     parser.add_argument("--face-det-size", type=int, default=320, help="InsightFace detector size. 320 is faster; 640 is better for small faces.")
-    parser.add_argument("--identity-every", type=int, default=5, help="Run known-person matching every N frames when not locked. Higher is faster.")
+    parser.add_argument("--identity-every", type=int, default=10, help="Run expensive known-person matching every N frames when not locked. Higher is faster; default 10 protects FPS.")
+    parser.add_argument("--max-auto-candidates", type=int, default=2, help="Maximum detections to run face/body identity matching on per identity cycle. Larger is slower.")
+    parser.add_argument("--metadata-every", type=int, default=5, help="Write metadata every N frames. Use 1 for full logs; higher is faster.")
     parser.add_argument("--no-auto-identify", action="store_true", help="Do not auto-match known people before manual lock.")
     parser.add_argument("--auto-lock", action="store_true", help="Automatically enter locked/focus mode after a high-confidence known-person match. Off by default; identity labels do not require locking.")
     parser.add_argument("--no-auto-lock", action="store_true", help="Deprecated compatibility flag. Automatic lock is already off unless --auto-lock is used.")
@@ -173,7 +175,8 @@ def main() -> None:
     parser.add_argument("--auto-body-threshold", type=float, default=0.86, help="Body/ReID score required for optional automatic focus lock.")
     parser.add_argument("--font-scale", type=float, default=1.6, help="Scale overlay text. Default 1.6 balances far-distance readability with uncluttered video.")
     parser.add_argument("--display-scale", type=float, default=1.0, help="Scale displayed window frame. Example: 0.75 on small screens.")
-    parser.add_argument("--no-debug-panel", action="store_true", help="Hide the right-side debug dashboard.")
+    parser.add_argument("--debug-panel", action="store_true", help="Show the right-side debug dashboard. Off by default for higher FPS.")
+    parser.add_argument("--no-debug-panel", action="store_true", help="Deprecated compatibility flag. Debug panel is already off unless --debug-panel is used.")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -217,7 +220,7 @@ def main() -> None:
     body_name = None
     body_score = None
     frame_idx = -1
-    debug_panel = not args.no_debug_panel
+    debug_panel = bool(args.debug_panel) and not args.no_debug_panel
     last_t = time.perf_counter()
     fps = None
     last_guesses: list[IdentityGuess] = []
@@ -266,7 +269,8 @@ def main() -> None:
             and frame_idx % args.identity_every == 0
         )
         if auto_identify_now:
-            last_guesses = [
+            candidates = sorted(detections, key=lambda d: d.area, reverse=True)[: max(1, args.max_auto_candidates)]
+            new_guesses = [
                 identify_detection(
                     frame,
                     d,
@@ -276,9 +280,20 @@ def main() -> None:
                     cfg=cfg["identity"] | cfg.get("outputs", {}),
                     args=args,
                 )
-                for d in detections
+                for d in candidates
             ]
-            last_guesses.sort(key=lambda g: (g.name is not None, not g.conflict, -math.isnan(g.score) if isinstance(g.score, float) else True, g.score if not math.isnan(g.score) else -1), reverse=True)
+            new_guesses.sort(
+                key=lambda g: (
+                    g.name is not None,
+                    not g.conflict,
+                    -1.0 if math.isnan(g.score) else g.score,
+                ),
+                reverse=True,
+            )
+            # Keep only the latest evaluated candidates. This avoids stale labels
+            # being attached by list index when we intentionally skip small
+            # candidates for FPS.
+            last_guesses = new_guesses
             last_best_guess = last_guesses[0] if last_guesses else None
 
         if not locked:
@@ -400,7 +415,8 @@ def main() -> None:
                     cv2.imwrite(str(face_dir / f"face_{frame_idx:06d}.jpg"), score.face_result.crop)
                 print(f"saved frame {frame_idx}")
 
-        write_jsonl(metadata_path, event)
+        if args.metadata_every > 0 and frame_idx % args.metadata_every == 0:
+            write_jsonl(metadata_path, event)
         if key == ord("d"):
             debug_panel = not debug_panel
             print(f"debug panel: {debug_panel}")

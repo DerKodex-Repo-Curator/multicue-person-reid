@@ -50,7 +50,7 @@ Some OpenCV builds omit `cv2.HOGDescriptor`. The project should fall back to a p
 Try the faster preset:
 
 ```bash
-uv run run_camera.py --camera 0 --device auto --imgsz 320 --identity-every 10 --no-pose
+uv run run_camera.py --camera 0 --device auto --imgsz 320 --identity-every 15 --max-auto-candidates 1 --metadata-every 10 --no-pose
 ```
 
 Also check startup output for MPS:
@@ -216,3 +216,13 @@ The camera HUD now uses a thinner text style over translucent black cards. The i
 
 The deprecated Ultralytics `half` inference argument is no longer passed during normal runs. The `--half` CLI option is kept only as a compatibility no-op so older commands do not break. Use `--quantize` to request quantized inference when the installed Ultralytics backend supports it; unsupported `quantize` requests are retried without quantization.
 
+
+## Recent build feels much slower
+
+Use the fast preset first:
+
+```bash
+uv run run_camera.py --camera 0 --known-db outputs/known_faces.npz --known-body-db outputs/known_bodies.npz --device auto --imgsz 320 --identity-every 15 --max-auto-candidates 1 --metadata-every 10 --no-pose --face-provider cpu
+```
+
+Then add features back one at a time: pose, lower `--identity-every`, more candidates, and finally `--debug-panel`. Keep `--face-provider coreml` experimental; CPU can be faster for InsightFace in some setups.

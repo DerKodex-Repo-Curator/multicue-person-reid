@@ -139,7 +139,7 @@ The threaded reader improves responsiveness; it does not make all ML computation
 The current repository line intentionally prioritizes Apple Silicon/macOS performance:
 
 - YOLO uses PyTorch MPS when available.
-- InsightFace can use a fixed-shape CoreML MLProgram path when available.
+- InsightFace defaults to CPU for stable FPS; fixed-shape CoreML remains opt-in/experimental.
 - CPU fallback remains available for stability.
 
 Platform-agnostic cleanup is a later priority.
