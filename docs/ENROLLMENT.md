@@ -14,6 +14,7 @@ Unified enrollment solves that by saving both face and body samples from the sam
 uv run capture_unified_enroll.py \
   --person jose \
   --camera 0 \
+  --camera-profile webcam \
   --bucket-target 8 \
   --max-samples 72 \
   --clear-existing \
@@ -95,6 +96,45 @@ uv run capture_unified_enroll.py --person jose --camera 0 --bucket-target 10 --m
 
 Review saved crops afterward. More samples can hurt if they are blurry, duplicate, badly cropped, or mislabeled.
 
+
+## Camera profiles and distance buckets
+
+`CLOSE` and `FAR` are not measured in meters. They are based on the detected person height relative to the video frame. The overlay now prints this live, for example:
+
+```text
+Distance: body 51% frame | close >= 72% | far <= 46%
+```
+
+Preview the thresholds before enrollment:
+
+```bash
+uv run camera_distance_test.py --camera 0 --camera-profile webcam
+```
+
+Profiles:
+
+```bash
+--camera-profile webcam     # near-field webcam
+--camera-profile dedicated  # external/phone/tripod camera
+--camera-profile cctv       # distant low-resolution-style testing
+```
+
+If `FAR` is too far for your room, increase the FAR threshold instead of guessing:
+
+```bash
+--far-body-ratio 0.55
+```
+
+If `CLOSE` is too close, lower it:
+
+```bash
+--close-body-ratio 0.64
+```
+
+By default, FAR samples can be body-only. This is useful because distant footage often does not have a reliable face crop. Use `--far-requires-face` only when the far face is still readable.
+
+See [`CAMERA_PROFILES.md`](CAMERA_PROFILES.md).
+
 ## Quality gates
 
 The unified flow can reject samples because of:
@@ -111,8 +151,11 @@ The unified flow can reject samples because of:
 Useful tuning flags:
 
 ```bash
---min-body-height 240
---min-face-size 46
+--camera-profile webcam
+--far-body-ratio 0.55
+--close-body-ratio 0.64
+--min-body-height 220
+--min-face-size 42
 --min-sharpness 32
 --min-pose-quality 0.16
 --duplicate-threshold 0.985

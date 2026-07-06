@@ -176,3 +176,32 @@ If you are far from the display, prefer `--font-scale 1.6` first and increase to
 ## Overlay layout note
 
 The overlay defaults to `--font-scale 1.6`, but panels are compact and width-clamped so long status lines are shortened instead of spilling outside the camera window. If text still feels large on a nearby display, use `--font-scale 1.4`; if the window itself is too large, combine it with `--display-scale 0.8`.
+
+
+## FAR bucket never registers
+
+Run the distance tester:
+
+```bash
+uv run camera_distance_test.py --camera 0 --camera-profile webcam
+```
+
+Look at the reported person height percentage. If your room only lets you reach about 52% of the frame but the current FAR threshold is 46%, the FAR bucket will never fill. Raise the threshold:
+
+```bash
+--far-body-ratio 0.55
+```
+
+For a more distant camera, use:
+
+```bash
+--camera-profile dedicated
+```
+
+For CCTV-like testing, use:
+
+```bash
+--camera-profile cctv --imgsz 640
+```
+
+FAR samples are body/ReID-oriented by default and do not require a usable face unless `--far-requires-face` is set.

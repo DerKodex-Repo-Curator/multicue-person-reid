@@ -32,6 +32,7 @@ enroll_body.py                # builds outputs/known_bodies.npz
 run_camera.py                 # live camera inference
 run_video.py                  # video-file inference
 list_cameras.py               # camera index helper
+camera_distance_test.py       # preview distance thresholds before enrollment
 config.yaml                   # thresholds / scoring config
 face_yolo_identity/           # project package
 docs/                         # architecture, setup, limitations, troubleshooting
@@ -75,10 +76,36 @@ uv run list_cameras.py --preview
 
 Use unified enrollment unless you are specifically testing face-only or body-only capture.
 
+### Camera profile and distance check
+
+Before re-enrolling, preview whether the active CLOSE/FAR thresholds make sense for your camera placement:
+
+```bash
+uv run camera_distance_test.py --camera 0 --camera-profile webcam
+```
+
+Choose a profile based on the test setup:
+
+```bash
+--camera-profile webcam     # desk/built-in webcam, near-field testing
+--camera-profile dedicated  # external/phone/tripod camera
+--camera-profile cctv       # distant CCTV-like framing
+```
+
+Enrollment distance is based on detected person height as a percentage of the video frame, not real meters. If FAR is too far for the room, tune it directly, for example:
+
+```bash
+--far-body-ratio 0.55
+```
+
+See [`docs/CAMERA_PROFILES.md`](docs/CAMERA_PROFILES.md) for the full threshold guide.
+
+
 ```bash
 uv run capture_unified_enroll.py \
   --person jose \
   --camera 0 \
+  --camera-profile webcam \
   --bucket-target 8 \
   --max-samples 72 \
   --clear-existing \
@@ -211,6 +238,7 @@ Start here:
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system pipeline and identity states.
 - [`docs/ENROLLMENT.md`](docs/ENROLLMENT.md) — unified face/body enrollment flow.
+- [`docs/CAMERA_PROFILES.md`](docs/CAMERA_PROFILES.md) — webcam, dedicated camera, and CCTV distance thresholds.
 - [`docs/ADAPTIVE_ENROLLMENT.md`](docs/ADAPTIVE_ENROLLMENT.md) — bucket targets and sample quality.
 - [`docs/INFERENCE.md`](docs/INFERENCE.md) — automatic identity mode, lock mode, and debugging.
 - [`docs/APPLE_SILICON_OPTIMIZATION.md`](docs/APPLE_SILICON_OPTIMIZATION.md) — MPS/CoreML runtime notes.

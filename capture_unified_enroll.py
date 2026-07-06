@@ -29,6 +29,36 @@ BUCKET_LABELS = {
     "back": "turn your back / no face",
 }
 
+# Distance thresholds are based on apparent person height as a fraction of the
+# camera frame height, not real-world meters. This keeps the system usable with
+# webcams, external cameras, and CCTV feeds without camera calibration.
+CAMERA_PROFILES = {
+    "webcam": {
+        "close_body_ratio": 0.72,
+        "far_body_ratio": 0.46,
+        "min_body_height": 220,
+        "min_face_size": 42,
+        "far_requires_face": False,
+        "description": "near-field laptop/desktop webcam",
+    },
+    "dedicated": {
+        "close_body_ratio": 0.62,
+        "far_body_ratio": 0.34,
+        "min_body_height": 150,
+        "min_face_size": 34,
+        "far_requires_face": False,
+        "description": "external USB/phone/tripod camera",
+    },
+    "cctv": {
+        "close_body_ratio": 0.42,
+        "far_body_ratio": 0.18,
+        "min_body_height": 72,
+        "min_face_size": 20,
+        "far_requires_face": False,
+        "description": "distant low-resolution CCTV-style feed",
+    },
+}
+
 
 @dataclass
 class UnifiedQuality:
@@ -44,6 +74,9 @@ class UnifiedQuality:
     sharpness: float = 0.0
     pose_quality: float = 0.0
     visible_keypoints: int = 0
+    body_ratio: float = 0.0
+    close_body_ratio: float = 0.0
+    far_body_ratio: float = 0.0
     duplicate_sim: float | None = None
 
 
@@ -124,15 +157,23 @@ def _next_needed(counts: dict[str, int], samples: int, bucket_target: int | None
     return min(BUCKETS, key=lambda b: counts.get(b, 0))
 
 
-def _bucket_for_sample(frame: np.ndarray, det: PoseDetection, face: FaceResult | None, yaw_deg: float | None) -> tuple[str, str]:
+def _bucket_for_sample(
+    frame: np.ndarray,
+    det: PoseDetection,
+    face: FaceResult | None,
+    yaw_deg: float | None,
+    *,
+    close_body_ratio: float,
+    far_body_ratio: float,
+) -> tuple[str, str]:
     h, w = frame.shape[:2]
     x1, y1, x2, y2 = det.box_xyxy
     body_h = max(1.0, y2 - y1)
     body_ratio = body_h / max(1.0, h)
-    if body_ratio >= 0.78:
-        return "close", "close enough"
-    if body_ratio <= 0.42:
-        return "far", "far enough"
+    if body_ratio >= close_body_ratio:
+        return "close", f"close enough ({body_ratio:.0%})"
+    if body_ratio <= far_body_ratio:
+        return "far", f"far enough ({body_ratio:.0%})"
     if face is None or face.box_xyxy is None:
         return "back", "no face visible"
     if yaw_deg is not None:
@@ -162,6 +203,9 @@ def _quality_check(
     min_sharpness: float,
     min_pose_quality: float,
     duplicate_threshold: float,
+    close_body_ratio: float,
+    far_body_ratio: float,
+    far_requires_face: bool,
 ) -> tuple[UnifiedQuality, np.ndarray | None, np.ndarray | None, np.ndarray | None, np.ndarray | None]:
     detections = detector.detect(frame)
     det = _largest_person(detections)
@@ -178,10 +222,18 @@ def _quality_check(
     body = body_fingerprint(crop)
     sil = silhouette_fingerprint(crop)
     combo = _combo(body, geom.vector, sil, face.embedding if face else None)
-    bucket, bucket_reason = _bucket_for_sample(frame, det, face, yaw)
+    bucket, bucket_reason = _bucket_for_sample(
+        frame,
+        det,
+        face,
+        yaw,
+        close_body_ratio=close_body_ratio,
+        far_body_ratio=far_body_ratio,
+    )
 
     x1, y1, x2, y2 = det.box_xyxy
     body_h = int(max(0, y2 - y1))
+    body_ratio = body_h / max(1.0, frame.shape[0])
     face_size = 0
     if face is not None and face.box_xyxy is not None:
         fx1, fy1, fx2, fy2 = face.box_xyxy
@@ -199,6 +251,9 @@ def _quality_check(
         sharpness=sharp,
         pose_quality=geom.quality,
         visible_keypoints=geom.visible_keypoints,
+        body_ratio=body_ratio,
+        close_body_ratio=close_body_ratio,
+        far_body_ratio=far_body_ratio,
     )
 
     if body_h < min_body_height:
@@ -209,7 +264,10 @@ def _quality_check(
         return UnifiedQuality(False, f"pose weak ({geom.quality:.2f})", **base), body, geom.vector, sil, combo
     if combo is None:
         return UnifiedQuality(False, "no feature vector", **base), body, geom.vector, sil, combo
-    if bucket != "back" and (face is None or face.embedding is None or face_size < min_face_size):
+    face_required_buckets = {"front", "turn_left", "turn_right", "close"}
+    if far_requires_face:
+        face_required_buckets.add("far")
+    if bucket in face_required_buckets and (face is None or face.embedding is None or face_size < min_face_size):
         return UnifiedQuality(False, f"face weak/small ({face_size}px)", **base), body, geom.vector, sil, combo
 
     dup = None
@@ -259,7 +317,32 @@ def _shorten(text: str, max_chars: int) -> str:
     return text[: max(0, max_chars - 1)] + "…"
 
 
-def _draw_overlay(frame, *, person, saved, samples, bucket_target=None, max_samples=None, q: UnifiedQuality|None, counts, start_remaining, font_scale):
+def _distance_hint(q: UnifiedQuality | None) -> str:
+    if q is None:
+        return "Distance: waiting for person"
+    body_pct = q.body_ratio * 100.0
+    close_pct = q.close_body_ratio * 100.0
+    far_pct = q.far_body_ratio * 100.0
+    if q.bucket == "far":
+        status = "FAR OK"
+    elif body_pct > far_pct:
+        status = f"for FAR: step back until <= {far_pct:.0f}%"
+    else:
+        status = "far threshold reached"
+    return f"Distance: body {body_pct:.0f}% frame | close >= {close_pct:.0f}% | far <= {far_pct:.0f}% | {status}"
+
+
+def _profile_values(args):
+    profile = CAMERA_PROFILES.get(args.camera_profile, CAMERA_PROFILES["webcam"]).copy()
+    close = args.close_body_ratio if args.close_body_ratio is not None else profile["close_body_ratio"]
+    far = args.far_body_ratio if args.far_body_ratio is not None else profile["far_body_ratio"]
+    min_body = args.min_body_height if args.min_body_height is not None else profile["min_body_height"]
+    min_face = args.min_face_size if args.min_face_size is not None else profile["min_face_size"]
+    far_requires_face = args.far_requires_face if args.far_requires_face is not None else profile["far_requires_face"]
+    return float(close), float(far), int(min_body), int(min_face), bool(far_requires_face), profile
+
+
+def _draw_overlay(frame, *, person, saved, samples, bucket_target=None, max_samples=None, q: UnifiedQuality|None, counts, start_remaining, font_scale, camera_profile: str = "webcam"):
     """Draw a compact HUD that stays inside the camera frame.
 
     Earlier builds used a large fixed-size panel. This version keeps the video
@@ -277,7 +360,7 @@ def _draw_overlay(frame, *, person, saved, samples, bucket_target=None, max_samp
 
     # Top-left status card, compact and width-clamped.
     card_w = min(w - 24, max(360, int(w * 0.55)))
-    card_h = min(max(102, int(96 * fs)), max(96, h // 4))
+    card_h = min(max(128, int(122 * fs)), max(116, h // 3))
     _rect(frame, 12, 12, 12 + card_w, 12 + card_h, 0.42)
     y = 12 + pad + int(19 * fs)
     max_label = f"/{max_samples}" if max_samples else ""
@@ -290,12 +373,14 @@ def _draw_overlay(frame, *, person, saved, samples, bucket_target=None, max_samp
         line_text = f"Need: {BUCKET_LABELS[need]}"
     _text(frame, _shorten(line_text, max_chars + 8), (12 + pad, y), small, (80, 230, 255), 2)
     y += line
+    _text(frame, _shorten(f"Profile: {camera_profile} | {_distance_hint(q)}", max_chars + 18), (12 + pad, y), tiny, (245, 245, 245), 2)
+    y += line
     if q:
         color = (80, 255, 80) if q.ok else (80, 210, 255)
         _text(frame, _shorten(f"Decision: {q.reason}", max_chars + 6), (12 + pad, y), small, color, 2)
         y += line
         yaw = "-" if q.face_yaw_deg is None else f"{q.face_yaw_deg:+.0f}°"
-        stats = f"{q.bucket} | yaw {yaw} | body {q.body_height}px | face {q.face_size}px | pose {q.pose_quality:.2f}"
+        stats = f"{q.bucket} | yaw {yaw} | body {q.body_height}px ({q.body_ratio:.0%}) | face {q.face_size}px | pose {q.pose_quality:.2f}"
         _text(frame, _shorten(stats, max_chars + 10), (12 + pad, y), tiny, (245, 245, 245), 2)
         if q.detection:
             x1, y1, x2, y2 = xyxy_to_int(q.detection.box_xyxy, w, h)
@@ -344,8 +429,12 @@ def main() -> None:
     parser.add_argument("--clear-existing",action="store_true")
     parser.add_argument("--font-scale", type=float, default=1.6, help="Overlay text size. Default 1.6 balances far-distance readability with uncluttered video.")
     parser.add_argument("--display-scale",type=float,default=1.0)
-    parser.add_argument("--min-body-height",type=int,default=240)
-    parser.add_argument("--min-face-size",type=int,default=46)
+    parser.add_argument("--camera-profile",choices=["webcam","dedicated","cctv"],default="webcam",help="Distance/quality defaults for the camera type. Use webcam, dedicated, or cctv.")
+    parser.add_argument("--close-body-ratio",type=float,default=None,help="Override CLOSE threshold. Example 0.72 means the person box is at least 72% of frame height.")
+    parser.add_argument("--far-body-ratio",type=float,default=None,help="Override FAR threshold. Example 0.46 means the person box is at most 46% of frame height.")
+    parser.add_argument("--far-requires-face",action=argparse.BooleanOptionalAction,default=None,help="Whether FAR samples must also have a usable face. Default depends on --camera-profile.")
+    parser.add_argument("--min-body-height",type=int,default=None,help="Minimum person crop height in pixels. Default depends on --camera-profile.")
+    parser.add_argument("--min-face-size",type=int,default=None,help="Minimum face crop size in pixels for face-required buckets. Default depends on --camera-profile.")
     parser.add_argument("--min-sharpness",type=float,default=32.0)
     parser.add_argument("--min-pose-quality",type=float,default=0.16)
     parser.add_argument("--duplicate-threshold",type=float,default=0.985)
@@ -356,6 +445,9 @@ def main() -> None:
     parser.add_argument("--no-sound",action="store_true")
     parser.add_argument("--beep-only",action="store_true")
     args=parser.parse_args()
+    close_body_ratio, far_body_ratio, min_body_height, min_face_size, far_requires_face, profile = _profile_values(args)
+    if far_body_ratio >= close_body_ratio:
+        raise SystemExit("--far-body-ratio must be smaller than --close-body-ratio")
     bucket_target = _target_each(args.samples, args.bucket_target)
     balanced_target_total = bucket_target * len(BUCKETS)
     max_samples = args.max_samples if args.max_samples is not None else max(balanced_target_total * 2, balanced_target_total + 12)
@@ -376,6 +468,8 @@ def main() -> None:
     print("Controls: SPACE=force save, M=mute/unmute, Q=quit")
     print("Unified enrollment saves face samples when visible and body/ReID samples for every accepted bucket.")
     print(f"Balanced target: {bucket_target} samples per bucket ({balanced_target_total} minimum), max_samples={max_samples}")
+    print(f"Camera profile: {args.camera_profile} ({profile['description']})")
+    print(f"Distance thresholds: CLOSE >= {close_body_ratio:.0%} of frame height; FAR <= {far_body_ratio:.0%}; min body={min_body_height}px; min face={min_face_size}px; far requires face={far_requires_face}")
     audio.prompt("Unified enrollment starting. Step into view.",force=True)
 
     counts={b:0 for b in BUCKETS}; saved=0; saved_vectors=[]; muted=args.no_sound; last_need=""; last_save=0.0
@@ -394,7 +488,7 @@ def main() -> None:
                     audio.prompt("Enrollment complete", force=True)
                 q=None
                 preview=frame.copy()
-                _draw_overlay(preview,person=args.person,saved=saved,samples=args.samples,bucket_target=args.bucket_target,max_samples=max_samples,q=q,counts=counts,start_remaining=0,font_scale=args.font_scale)
+                _draw_overlay(preview,person=args.person,saved=saved,samples=args.samples,bucket_target=args.bucket_target,max_samples=max_samples,q=q,counts=counts,start_remaining=0,font_scale=args.font_scale,camera_profile=args.camera_profile)
                 done_msg = "DONE. Auto-closing soon." if args.done_hold >= 0 else "DONE. Press Q to close."
                 _text(preview,done_msg,(30,90),args.font_scale,(80,255,80),4)
                 show=cv2.resize(preview,None,fx=args.display_scale,fy=args.display_scale,interpolation=cv2.INTER_AREA) if args.display_scale!=1 else preview
@@ -406,7 +500,7 @@ def main() -> None:
 
             body=geom=sil=combo=None
             if not waiting:
-                q,body,geom,sil,combo=_quality_check(frame,detector,embedder,saved_vectors,counts,samples=args.samples,bucket_target=args.bucket_target,min_body_height=args.min_body_height,min_face_size=args.min_face_size,min_sharpness=args.min_sharpness,min_pose_quality=args.min_pose_quality,duplicate_threshold=args.duplicate_threshold)
+                q,body,geom,sil,combo=_quality_check(frame,detector,embedder,saved_vectors,counts,samples=args.samples,bucket_target=args.bucket_target,min_body_height=min_body_height,min_face_size=min_face_size,min_sharpness=args.min_sharpness,min_pose_quality=args.min_pose_quality,duplicate_threshold=args.duplicate_threshold,close_body_ratio=close_body_ratio,far_body_ratio=far_body_ratio,far_requires_face=far_requires_face)
             else:
                 q=None
             need=_next_needed(counts,args.samples,args.bucket_target)
@@ -414,7 +508,7 @@ def main() -> None:
                 audio.prompt(BUCKET_LABELS[need],force=True); last_need=BUCKET_LABELS[need]
 
             preview=frame.copy()
-            _draw_overlay(preview,person=args.person,saved=saved,samples=args.samples,bucket_target=args.bucket_target,max_samples=max_samples,q=q,counts=counts,start_remaining=max(0,args.start_delay-(now-start)) if waiting else None,font_scale=args.font_scale)
+            _draw_overlay(preview,person=args.person,saved=saved,samples=args.samples,bucket_target=args.bucket_target,max_samples=max_samples,q=q,counts=counts,start_remaining=max(0,args.start_delay-(now-start)) if waiting else None,font_scale=args.font_scale,camera_profile=args.camera_profile)
             show=cv2.resize(preview,None,fx=args.display_scale,fy=args.display_scale,interpolation=cv2.INTER_AREA) if args.display_scale!=1 else preview
             cv2.imshow("capture_unified_enroll",show)
             key=cv2.waitKey(1)&0xFF
@@ -439,7 +533,7 @@ def main() -> None:
                 if combo is not None:
                     saved_vectors.append(combo)
                 counts[q.bucket]=counts.get(q.bucket,0)+1
-                meta={"sample":saved,"bucket":q.bucket,"body_crop":str(body_path),"face_crop":str(face_path) if face_path else None,"frame":str(frame_path),"reason":q.reason,"yaw_deg":q.face_yaw_deg,"body_height":q.body_height,"face_size":q.face_size,"pose_quality":q.pose_quality,"visible_keypoints":q.visible_keypoints}
+                meta={"sample":saved,"bucket":q.bucket,"body_crop":str(body_path),"face_crop":str(face_path) if face_path else None,"frame":str(frame_path),"reason":q.reason,"yaw_deg":q.face_yaw_deg,"body_height":q.body_height,"face_size":q.face_size,"pose_quality":q.pose_quality,"visible_keypoints":q.visible_keypoints,"body_ratio":q.body_ratio,"close_body_ratio":q.close_body_ratio,"far_body_ratio":q.far_body_ratio,"camera_profile":args.camera_profile}
                 meta_path.open("a",encoding="utf-8").write(json.dumps(meta)+"\n")
                 print(f"saved {saved:03d} bucket={q.bucket} body={body_path.name} face={Path(face_path).name if face_path else '-'}")
                 audio.prompt("Saved",force=True)

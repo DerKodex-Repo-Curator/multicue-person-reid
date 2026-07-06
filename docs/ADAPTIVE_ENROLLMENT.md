@@ -145,3 +145,16 @@ Use the bucket panel as the source of truth for what is still missing.
 ## Overlay layout note
 
 The overlay defaults to `--font-scale 1.6`, but panels are compact and width-clamped so long status lines are shortened instead of spilling outside the camera window. If text still feels large on a nearby display, use `--font-scale 1.4`; if the window itself is too large, combine it with `--display-scale 0.8`.
+
+
+## Distance-aware adaptive capture
+
+Adaptive enrollment now reports apparent person distance directly in the overlay. If one bucket never fills, check whether the body percentage is actually crossing the profile threshold.
+
+Use:
+
+```bash
+uv run camera_distance_test.py --camera 0 --camera-profile webcam
+```
+
+Then tune `--far-body-ratio` or `--close-body-ratio` before collecting many samples. This is better than increasing `--max-samples` when the bucket condition is impossible in the room.
