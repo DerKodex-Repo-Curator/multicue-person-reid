@@ -225,4 +225,4 @@ Use the fast preset first:
 uv run run_camera.py --camera 0 --known-db outputs/known_faces.npz --known-body-db outputs/known_bodies.npz --device auto --imgsz 320 --identity-every 15 --max-auto-candidates 1 --metadata-every 10 --no-pose --face-provider cpu
 ```
 
-Then add features back one at a time: pose, lower `--identity-every`, more candidates, and finally `--debug-panel`. Keep `--face-provider coreml` experimental; CPU can be faster for InsightFace in some setups.
+Then add features back one at a time: pose, lower `--identity-every`, more candidates, and finally `--debug-panel`. Benchmark both providers with `uv run python scripts/benchmark_face_provider.py --camera 0 --face-det-size 320`; then force the faster/stabler provider with `--face-provider cpu` or `--face-provider coreml`.

@@ -8,7 +8,7 @@ The project uses different acceleration paths for different workloads:
 
 ```text
 YOLO / YOLO-pose  -> PyTorch MPS when available
-InsightFace       -> ONNX Runtime CPU by default; CoreML is opt-in/experimental, CPU fallback
+InsightFace       -> ONNX Runtime CoreML on Apple Silicon when available; CPU fallback
 Camera capture    -> threaded reader to reduce UI staleness
 ```
 
@@ -141,3 +141,13 @@ The deprecated Ultralytics `half` inference argument is no longer passed during 
 ## Default FPS protections
 
 Live inference now keeps the debug panel off by default, writes metadata every 5 frames, and runs expensive known-person matching every 10 frames on at most 2 largest candidates. Use `--debug-panel`, `--metadata-every 1`, `--identity-every 1`, or a larger `--max-auto-candidates` only when you need deeper diagnostics.
+
+
+## MLX feasibility
+
+MLX is possible for future Apple-native model work, but it is not a drop-in backend for the current InsightFace ONNX models. The current project uses:
+
+- PyTorch MPS for YOLO / YOLO-pose.
+- ONNX Runtime CoreML or CPU for InsightFace.
+
+A true MLX path would require converting or reimplementing the face embedding model and likely replacing the detector path as well. That is a larger research/deployment branch, not a quick provider flag. A practical intermediate direction is to benchmark CoreML/CPU for InsightFace and keep YOLO on MPS.

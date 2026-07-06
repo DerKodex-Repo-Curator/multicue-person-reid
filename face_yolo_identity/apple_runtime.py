@@ -46,17 +46,19 @@ def available_onnx_providers() -> list[str]:
 def select_face_providers(requested: str = "auto") -> list[FaceProvider]:
     """Select ONNX Runtime providers for InsightFace.
 
-    Apple Silicon uses CPU for InsightFace by default. In practice, YOLO on
-    PyTorch MPS is the reliable speed win, while InsightFace/CoreML can be slower
-    or unstable on some ONNX Runtime builds. CoreML remains opt-in with
-    --face-provider coreml.
+    On Apple Silicon, ``auto`` now prefers CoreML again when ONNX Runtime
+    exposes ``CoreMLExecutionProvider``. Earlier crashes came from dynamic SCRFD
+    output metadata; ``FaceEmbedder`` prepares fixed-shape model copies before
+    using CoreML and still falls back to CPU if CoreML fails at initialization or
+    runtime. Use ``--face-provider cpu`` when benchmarking shows CPU is faster on
+    a specific machine/camera setup.
     """
     requested = (requested or "auto").lower()
     providers = available_onnx_providers()
     if requested == "cpu":
         return ["CPUExecutionProvider"]
     apple_silicon = platform.system() == "Darwin" and platform.machine() == "arm64"
-    wants_coreml = requested == "coreml"
+    wants_coreml = requested == "coreml" or (requested == "auto" and apple_silicon)
     if wants_coreml and "CoreMLExecutionProvider" in providers:
         model_cache = Path("~/.insightface/coreml_cache").expanduser()
         model_cache.mkdir(parents=True, exist_ok=True)

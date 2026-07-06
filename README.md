@@ -21,7 +21,7 @@ Main capabilities:
 - Keeps manual lock as optional focus tracking for debugging one target.
 - Uses threaded camera capture to reduce UI freezes during inference and enrollment.
 - Uses PyTorch MPS for YOLO on Apple Silicon when available.
-- Uses PyTorch MPS for YOLO on Apple Silicon; InsightFace defaults to CPU because the CoreML path can be slower/unstable on some ONNX Runtime builds.
+- Uses PyTorch MPS for YOLO on Apple Silicon; InsightFace `auto` prefers fixed-shape CoreML on Apple Silicon and falls back to CPU if CoreML fails. Benchmark CPU vs CoreML on your exact camera before making claims.
 
 ## Repository layout
 
@@ -249,7 +249,7 @@ Locking means “follow this chosen target across future frames.” It does **no
 --device cpu           # force CPU
 --imgsz 320            # faster YOLO
 --imgsz 640            # more accurate YOLO
---face-provider auto   # default: stable CPU InsightFace path
+--face-provider auto   # Apple Silicon: CoreML when available, CPU fallback
 --face-provider cpu    # force InsightFace CPU explicitly
 --face-provider coreml # experimental; may be slower or unstable depending on ONNX Runtime
 --face-det-size 320    # faster face detection

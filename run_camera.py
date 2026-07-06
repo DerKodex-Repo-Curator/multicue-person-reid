@@ -155,7 +155,7 @@ def main() -> None:
     parser.add_argument("--half", action="store_true", help="Deprecated compatibility flag; ignored to avoid Ultralytics 'half' deprecation warnings. Use --quantize when supported.")
     parser.add_argument("--quantize", action="store_true", help="Request Ultralytics quantized inference when supported by the installed version/backend.")
     parser.add_argument("--tracker", default="bytetrack.yaml", help="Ultralytics tracker YAML, e.g. bytetrack.yaml or botsort.yaml.")
-    parser.add_argument("--face-provider", default="auto", choices=["auto", "cpu", "coreml"], help="InsightFace ONNX provider preference. auto uses CPU for stable Apple Silicon FPS; coreml is opt-in/experimental.")
+    parser.add_argument("--face-provider", default="auto", choices=["auto", "cpu", "coreml"], help="InsightFace ONNX provider preference. On Apple Silicon, auto prefers fixed-shape CoreML with CPU fallback; use cpu if benchmarked faster/stabler.")
     parser.add_argument("--face-det-size", type=int, default=320, help="InsightFace detector size. 320 is faster; 640 is better for small faces.")
     parser.add_argument("--identity-every", type=int, default=10, help="Run expensive known-person matching every N frames when not locked. Higher is faster; default 10 protects FPS.")
     parser.add_argument("--max-auto-candidates", type=int, default=2, help="Maximum detections to run face/body identity matching on per identity cycle. Larger is slower.")
