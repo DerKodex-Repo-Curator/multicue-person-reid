@@ -140,3 +140,8 @@ A good session pattern:
 7. Return to front for remaining missing buckets.
 
 Use the bucket panel as the source of truth for what is still missing.
+
+
+## Overlay layout note
+
+The overlay defaults to `--font-scale 1.6`, but panels are compact and width-clamped so long status lines are shortened instead of spilling outside the camera window. If text still feels large on a nearby display, use `--font-scale 1.4`; if the window itself is too large, combine it with `--display-scale 0.8`.

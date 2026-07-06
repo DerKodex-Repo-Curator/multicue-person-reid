@@ -171,3 +171,8 @@ The sane default is `--font-scale 1.6`. Earlier builds used larger defaults that
 ```
 
 If you are far from the display, prefer `--font-scale 1.6` first and increase to `1.8` only if needed.
+
+
+## Overlay layout note
+
+The overlay defaults to `--font-scale 1.6`, but panels are compact and width-clamped so long status lines are shortened instead of spilling outside the camera window. If text still feels large on a nearby display, use `--font-scale 1.4`; if the window itself is too large, combine it with `--display-scale 0.8`.

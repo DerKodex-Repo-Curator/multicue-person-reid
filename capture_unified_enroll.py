@@ -252,51 +252,80 @@ def _bar(img, x, y, w, h, frac, color):
     cv2.rectangle(img,(x,y),(x+int(w*frac),y+h),color,-1)
 
 
-def _draw_overlay(frame, *, person, saved, samples, bucket_target=None, max_samples=None, q: UnifiedQuality|None, counts, start_remaining, font_scale):
-    h,w=frame.shape[:2]
-    fs = max(0.9, font_scale)
-    small=max(1.05,fs*0.72)
-    pad=int(18*fs)
-    line=int(46*fs)
-    target=_target_each(samples,bucket_target)
-    need=_next_needed(counts,samples,bucket_target)
-    _rect(frame,12,12,min(w-12,int(920*fs)),12+int(190*fs),0.48)
-    y=12+pad+int(24*fs)
-    max_label = f"/{max_samples}" if max_samples else ""
-    _text(frame,f"UNIFIED ENROLL: {person}  saved {saved}{max_label}",(12+pad,y),fs,(255,255,255),4)
-    y+=line
-    if start_remaining and start_remaining>0:
-        _text(frame,f"Starting in {start_remaining:.1f}s",(12+pad,y),small,(80,230,255),4)
-    else:
-        _text(frame,f"Need: {BUCKET_LABELS[need]}",(12+pad,y),small,(80,230,255),4)
-    y+=line
-    if q:
-        color=(80,255,80) if q.ok else (80,210,255)
-        _text(frame,f"Decision: {q.reason}",(12+pad,y),small,color,4)
-        y+=line
-        yaw="-" if q.face_yaw_deg is None else f"{q.face_yaw_deg:+.0f}deg"
-        _text(frame,f"bucket {q.bucket} | yaw {yaw} | body {q.body_height}px | face {q.face_size}px | pose {q.pose_quality:.2f}",(12+pad,y),small,(245,245,245),4)
-        if q.detection:
-            x1,y1,x2,y2=xyxy_to_int(q.detection.box_xyxy,w,h)
-            cv2.rectangle(frame,(x1,y1),(x2,y2),(0,255,0) if q.ok else (0,180,255),max(4,int(4*fs)))
-            draw_pose(frame,q.detection,radius=max(6,int(5*fs)),thickness=max(3,int(3*fs)))
+def _shorten(text: str, max_chars: int) -> str:
+    text = str(text)
+    if len(text) <= max_chars:
+        return text
+    return text[: max(0, max_chars - 1)] + "…"
 
-    panel_w=min(w-24,int(620*fs)); panel_h=int((len(BUCKETS)+1.5)*38*fs)
-    bx=max(12,w-panel_w-12); by=max(12,h-panel_h-12)
-    _rect(frame,bx,by,bx+panel_w,by+panel_h,0.52)
-    yy=by+int(38*fs)
-    _text(frame,"Buckets",(bx+pad,yy),max(1.0,fs*0.72),(255,255,255),4)
-    yy+=int(42*fs)
-    bar_x=bx+int(260*fs); bar_w=max(120,panel_w-int(300*fs))
+
+def _draw_overlay(frame, *, person, saved, samples, bucket_target=None, max_samples=None, q: UnifiedQuality|None, counts, start_remaining, font_scale):
+    """Draw a compact HUD that stays inside the camera frame.
+
+    Earlier builds used a large fixed-size panel. This version keeps the video
+    dominant and clamps panel/text sizes based on the actual frame dimensions.
+    """
+    h, w = frame.shape[:2]
+    fs = min(max(0.75, font_scale), 1.6)
+    title = max(0.75, fs * 0.68)
+    small = max(0.56, fs * 0.50)
+    tiny = max(0.48, fs * 0.42)
+    pad = max(8, int(8 * fs))
+    line = max(20, int(22 * fs))
+    target = _target_each(samples, bucket_target)
+    need = _next_needed(counts, samples, bucket_target)
+
+    # Top-left status card, compact and width-clamped.
+    card_w = min(w - 24, max(360, int(w * 0.55)))
+    card_h = min(max(102, int(96 * fs)), max(96, h // 4))
+    _rect(frame, 12, 12, 12 + card_w, 12 + card_h, 0.42)
+    y = 12 + pad + int(19 * fs)
+    max_label = f"/{max_samples}" if max_samples else ""
+    max_chars = max(22, int(card_w / max(10, 17 * title)))
+    _text(frame, _shorten(f"UNIFIED ENROLL: {person}  {saved}{max_label}", max_chars), (12 + pad, y), title, (255, 255, 255), 2)
+    y += line
+    if start_remaining and start_remaining > 0:
+        line_text = f"Starting in {start_remaining:.1f}s"
+    else:
+        line_text = f"Need: {BUCKET_LABELS[need]}"
+    _text(frame, _shorten(line_text, max_chars + 8), (12 + pad, y), small, (80, 230, 255), 2)
+    y += line
+    if q:
+        color = (80, 255, 80) if q.ok else (80, 210, 255)
+        _text(frame, _shorten(f"Decision: {q.reason}", max_chars + 6), (12 + pad, y), small, color, 2)
+        y += line
+        yaw = "-" if q.face_yaw_deg is None else f"{q.face_yaw_deg:+.0f}°"
+        stats = f"{q.bucket} | yaw {yaw} | body {q.body_height}px | face {q.face_size}px | pose {q.pose_quality:.2f}"
+        _text(frame, _shorten(stats, max_chars + 10), (12 + pad, y), tiny, (245, 245, 245), 2)
+        if q.detection:
+            x1, y1, x2, y2 = xyxy_to_int(q.detection.box_xyxy, w, h)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0) if q.ok else (0, 180, 255), max(2, int(2 * fs)))
+            draw_pose(frame, q.detection, radius=max(3, int(3 * fs)), thickness=max(2, int(2 * fs)))
+
+    # Bottom-right bucket card. Keep it small enough to never spill past frame.
+    panel_w = min(max(300, int(290 * fs)), w - 24)
+    row_h = max(20, int(21 * fs))
+    panel_h = min(h - 24, pad * 2 + row_h * (len(BUCKETS) + 1))
+    bx = max(12, w - panel_w - 12)
+    by = max(12, h - panel_h - 12)
+    _rect(frame, bx, by, bx + panel_w, by + panel_h, 0.46)
+    yy = by + pad + int(15 * fs)
+    _text(frame, "Buckets", (bx + pad, yy), small, (255, 255, 255), 2)
+    yy += row_h
+    label_w = int(110 * fs)
+    bar_x = bx + pad + label_w
+    bar_w = max(70, panel_w - label_w - pad * 2)
     for b in BUCKETS:
-        count=counts.get(b,0); ok=count>=target
-        color=(100,255,100) if ok else (90,210,255)
-        label=b.upper().replace('TURN_','')
-        _text(frame,f"{label:<6} {count}/{target}",(bx+pad,yy),max(0.9,fs*0.62),color,4)
-        _bar(frame,bar_x,yy-int(24*fs),bar_w,max(14,int(16*fs)),count/max(target,1),color)
-        yy+=int(38*fs)
-    ctrl="SPACE force-save | M mute | Q quit"
-    _text(frame,ctrl,(18,h-28),small,(240,240,240),4)
+        count = counts.get(b, 0)
+        ok = count >= target
+        color = (100, 255, 100) if ok else (90, 210, 255)
+        label = b.upper().replace('TURN_', '')[:6]
+        _text(frame, f"{label} {count}/{target}", (bx + pad, yy), tiny, color, 2)
+        _bar(frame, bar_x, yy - int(12 * fs), bar_w, max(8, int(9 * fs)), count / max(target, 1), color)
+        yy += row_h
+
+    ctrl = "SPACE save | M mute | Q quit"
+    _text(frame, ctrl, (14, h - 14), tiny, (240, 240, 240), 2)
 
 
 def main() -> None:

@@ -85,7 +85,7 @@ uv run capture_unified_enroll.py \
   --start-delay 6
 ```
 
-Default overlay text size is `--font-scale 1.6`. It is intended to be readable from a distance without covering the camera view. Increase slightly only if your display/camera distance needs it.
+Default overlay text size is `--font-scale 1.6`. The HUD is now width-clamped and compact, so status text and bucket progress should stay inside the camera window instead of spilling off-screen. Increase slightly only if your display/camera distance needs it; use `--font-scale 1.4` for nearby desktop debugging.
 
 The unified flow captures both modalities from the same live pass:
 

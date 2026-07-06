@@ -131,3 +131,8 @@ uv run python scripts/plot_run_metadata.py outputs/camera_run/metadata.jsonl --o
 Treat labels as confidence-based outputs, not absolute truth.
 
 A good face match is strong evidence. A body/ReID match is weaker and should be interpreted as continuity or same-session re-identification, especially when clothing dominates.
+
+
+## Overlay layout note
+
+The overlay defaults to `--font-scale 1.6`, but panels are compact and width-clamped so long status lines are shortened instead of spilling outside the camera window. If text still feels large on a nearby display, use `--font-scale 1.4`; if the window itself is too large, combine it with `--display-scale 0.8`.

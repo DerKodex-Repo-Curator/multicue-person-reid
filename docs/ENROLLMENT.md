@@ -169,3 +169,8 @@ uv run capture_body_enroll.py --person jose --camera 0 --samples 24 --clear-exis
 ```
 
 Prefer `capture_unified_enroll.py` for normal use.
+
+
+## Overlay layout note
+
+The overlay defaults to `--font-scale 1.6`, but panels are compact and width-clamped so long status lines are shortened instead of spilling outside the camera window. If text still feels large on a nearby display, use `--font-scale 1.4`; if the window itself is too large, combine it with `--display-scale 0.8`.
