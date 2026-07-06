@@ -2,7 +2,7 @@
 
 A local prototype for **person detection, automatic known-person matching, face recognition, body/ReID continuity, and pose-aware enrollment**.
 
-The project is intentionally framed as a **multi-cue re-identification system**, not a face-recognition-only demo. Clear faces are treated as the strongest identity signal. When faces are small, blurry, turned away, or missing, the system falls back to weaker continuity signals such as tracker IDs, body crops, pose geometry, silhouette, and appearance features.
+The project is intentionally framed as a **multi-cue re-identification system**, not a face-recognition-only demo. Clear faces are treated as the strongest identity signal and are weighted higher than body/ReID cues. When faces are small, blurry, turned away, or missing, the system falls back to weaker continuity signals such as tracker IDs, body crops, pose geometry, silhouette, and appearance features.
 
 ## Current status
 
@@ -16,6 +16,8 @@ Main capabilities:
 - Enrolls face and body/ReID samples in one unified camera pass.
 - Uses adaptive bucket targets so more samples add useful diversity instead of near-duplicates.
 - Automatically labels known people during inference; pressing `L` is not required for identity matching.
+- Uses open-set rejection so weak body/ReID evidence does not label every stranger as the nearest known person.
+- Gives face recognition higher identity priority than body/ReID cues when a usable face is available.
 - Keeps manual lock as optional focus tracking for debugging one target.
 - Uses threaded camera capture to reduce UI freezes during inference and enrollment.
 - Uses PyTorch MPS for YOLO on Apple Silicon when available.
@@ -194,6 +196,26 @@ uv run run_camera.py \
   --identity-every 1
 ```
 
+
+## Open-set identity behavior
+
+With only one or two enrolled people, naive nearest-neighbor matching can mislabel strangers as one of the few known identities. The current defaults are intentionally conservative:
+
+```bash
+--face-match-threshold 0.46      # face can label known people
+--body-match-threshold 0.82      # body-only labels require a much stronger score
+--body-match-margin 0.08         # best body match must beat second-best clearly
+--body-min-known-people 2        # body-only labels are disabled with a one-person DB
+```
+
+Face evidence has priority. Body/ReID evidence is mainly used to corroborate a face match, maintain continuity, and provide debug candidates. To allow body-only naming with a single enrolled person for controlled demos, pass:
+
+```bash
+--allow-single-body-match
+```
+
+Use that flag carefully. Without open-set rejection, a system that only knows `jose` will tend to call unknown people `jose` whenever their body score is merely the nearest known match.
+
 ## Automatic identity vs lock
 
 The system does **not** require pressing `L` to determine a known person.
@@ -224,6 +246,11 @@ Locking means “follow this chosen target across future frames.” It does **no
 --face-det-size 320    # faster face detection
 --face-det-size 640    # better for small faces
 --identity-every 5     # known-person matching interval
+--face-match-threshold 0.46
+--body-match-threshold 0.82
+--body-match-margin 0.08
+--body-min-known-people 2
+--allow-single-body-match # demo-only: permits body-only labels with one enrolled person
 --auto-lock            # optional: focus lock after high-confidence known-person match
 --no-auto-identify     # disable automatic known-person matching
 --threaded-camera      # default: keep capture responsive during heavy inference

@@ -61,16 +61,31 @@ def identify_detection(
     known_db: KnownFaceDB | None,
     known_body_db: KnownBodyDB | None,
     cfg: dict,
+    args,
 ) -> IdentityGuess:
+    """Open-set identity scoring for one detected person.
+
+    Face is the primary identity cue. Body/ReID is useful for continuity and
+    corroboration, but body-only naming is deliberately conservative because a
+    tiny known database otherwise turns every stranger into the nearest enrolled
+    person.
+    """
     crop = crop_xyxy(frame, detection.box_xyxy, pad=cfg.get("crop_padding", 0.08))
+
     face_result = embedder.best_face(crop) if known_db is not None else None
     face_name = None
     face_score = float("nan")
     if known_db is not None and face_result is not None and face_result.embedding is not None:
-        face_name, face_score = known_db.match(face_result.embedding)
+        fm = known_db.match_detailed(
+            face_result.embedding,
+            threshold=args.face_match_threshold,
+            margin=args.face_match_margin,
+        )
+        face_name, face_score = fm.name, fm.score
 
     body_name = None
     body_score = float("nan")
+    body_reason = "not_run"
     if known_body_db is not None:
         body_vec = body_fingerprint(crop)
         geom = pose_geometry_fingerprint(
@@ -79,29 +94,40 @@ def identify_detection(
             min_conf=float(cfg.get("pose_min_keypoint_conf", 0.25)),
         )
         sil = silhouette_fingerprint(crop)
-        bm = known_body_db.match(body=body_vec, geometry=geom.vector, silhouette=sil)
-        body_name, body_score = bm.name, bm.score
+        bm = known_body_db.match(
+            body=body_vec,
+            geometry=geom.vector,
+            silhouette=sil,
+            threshold=args.body_match_threshold,
+            margin=args.body_match_margin,
+            min_known_people=args.body_min_known_people,
+            allow_single_person=args.allow_single_body_match,
+        )
+        body_name, body_score, body_reason = bm.name, bm.score, bm.reason
 
     conflict = bool(face_name and body_name and face_name != body_name)
     if conflict:
-        # Prefer face for display because it is the stronger cue, but do not auto-lock on conflicts.
-        return IdentityGuess(detection, face_name, face_score, "conflict(face/body)", face_name, face_score, body_name, body_score, True, face_result)
+        # A confident face match should win the label, but the conflict is surfaced.
+        return IdentityGuess(detection, face_name, face_score, "face(conflict)", face_name, face_score, body_name, body_score, True, face_result)
 
     if face_name:
         score = face_score
         source = "face"
         if body_name == face_name and not math.isnan(body_score):
-            score = max(score, body_score) + 0.03
+            # Body can corroborate a face, but it should not overpower face evidence.
+            score = min(1.0, (args.face_score_weight * face_score) + ((1.0 - args.face_score_weight) * body_score) + 0.02)
             source = "face+body"
         return IdentityGuess(detection, face_name, score, source, face_name, face_score, body_name, body_score, False, face_result)
 
+    # Body-only identity is optional/conservative. By default, a one-person body DB
+    # will show debug scores but not name every unknown person as that one person.
     if body_name:
-        return IdentityGuess(detection, body_name, body_score, "body/reid", face_name, face_score, body_name, body_score, False, face_result)
+        return IdentityGuess(detection, body_name, body_score, f"body/reid", face_name, face_score, body_name, body_score, False, face_result)
 
-    # Preserve the raw best non-threshold scores for debugging.
+    # Preserve raw best scores for debugging, but label as unknown.
     best_score = max([v for v in [face_score, body_score] if not math.isnan(v)], default=float("nan"))
-    return IdentityGuess(detection, None, best_score, "unknown", face_name, face_score, body_name, body_score, False, face_result)
-
+    source = f"unknown/body:{body_reason}" if body_reason not in {"not_run", "accepted"} else "unknown"
+    return IdentityGuess(detection, None, best_score, source, face_name, face_score, body_name, body_score, False, face_result)
 
 def should_auto_lock(guess: IdentityGuess, args) -> bool:
     if guess.name is None or guess.conflict:
@@ -134,8 +160,15 @@ def main() -> None:
     parser.add_argument("--auto-lock", action="store_true", help="Automatically enter locked/focus mode after a high-confidence known-person match. Off by default; identity labels do not require locking.")
     parser.add_argument("--no-auto-lock", action="store_true", help="Deprecated compatibility flag. Automatic lock is already off unless --auto-lock is used.")
     parser.add_argument("--threaded-camera", action=argparse.BooleanOptionalAction, default=True, help="Read camera frames on a background thread to keep UI responsive during ML inference.")
-    parser.add_argument("--auto-face-threshold", type=float, default=0.48, help="Face score required for automatic lock.")
-    parser.add_argument("--auto-body-threshold", type=float, default=0.70, help="Body/ReID score required for automatic lock.")
+    parser.add_argument("--face-match-threshold", type=float, default=0.46, help="Face score required to label a known person. Face is the strongest identity cue.")
+    parser.add_argument("--face-match-margin", type=float, default=0.03, help="Minimum gap between best and second-best face identity when multiple people are enrolled.")
+    parser.add_argument("--body-match-threshold", type=float, default=0.82, help="Conservative body/ReID score required for body-only labels.")
+    parser.add_argument("--body-match-margin", type=float, default=0.08, help="Minimum gap between best and second-best body/ReID identity when multiple people are enrolled.")
+    parser.add_argument("--body-min-known-people", type=int, default=2, help="Require at least this many enrolled people before body-only labels are allowed.")
+    parser.add_argument("--allow-single-body-match", action="store_true", help="Allow body-only labels even when only one person is enrolled. Useful for demos, risky for unknown people.")
+    parser.add_argument("--face-score-weight", type=float, default=0.82, help="When face and body agree, keep this fraction of the score from face evidence.")
+    parser.add_argument("--auto-face-threshold", type=float, default=0.52, help="Face score required for optional automatic focus lock.")
+    parser.add_argument("--auto-body-threshold", type=float, default=0.86, help="Body/ReID score required for optional automatic focus lock.")
     parser.add_argument("--font-scale", type=float, default=1.6, help="Scale overlay text. Default 1.6 balances far-distance readability with uncluttered video.")
     parser.add_argument("--display-scale", type=float, default=1.0, help="Scale displayed window frame. Example: 0.75 on small screens.")
     parser.add_argument("--no-debug-panel", action="store_true", help="Hide the right-side debug dashboard.")
@@ -174,7 +207,7 @@ def main() -> None:
     print(f"Runtime: AppleSilicon={rt.is_apple_silicon}, YOLO device={detector.device}, MPS={rt.torch_mps_available}, imgsz={args.imgsz}, pose={use_pose}")
     print(f"Face backend: {embedder.backend}; requested providers={args.face_provider}; active providers={getattr(embedder, 'providers', [])}")
     if not args.no_auto_identify and (known_db or known_body_db):
-        print("Automatic identity mode: ON. Known people are labeled without pressing L. Use --auto-lock only for optional focus tracking.")
+        print("Automatic identity mode: ON. Face can label known people immediately; body-only labels are conservative/open-set guarded.")
 
     locked = False
     recognized_name = None
@@ -239,6 +272,7 @@ def main() -> None:
                     known_db=known_db,
                     known_body_db=known_body_db,
                     cfg=cfg["identity"] | cfg.get("outputs", {}),
+                    args=args,
                 )
                 for d in detections
             ]
@@ -264,6 +298,14 @@ def main() -> None:
                     tag = f"{guess.name} {guess.score:.2f} [{guess.source}]"
                 elif guess is not None and guess.conflict:
                     tag = f"CONFLICT face:{guess.face_name} body:{guess.body_name}"
+                elif guess is not None:
+                    parts = []
+                    if not math.isnan(guess.face_score):
+                        parts.append(f"face {guess.face_score:.2f}")
+                    if not math.isnan(guess.body_score):
+                        parts.append(f"body {guess.body_score:.2f}")
+                    detail = " ".join(parts) if parts else f"id={d.track_id}"
+                    tag = f"unknown [{guess.source}] {detail}"
                 else:
                     tag = f"candidate id={d.track_id}" if d.track_id is not None else "candidate"
                 readable_label(annotated, tag, x1, max(32, y1), scale=args.font_scale, thickness=2)
@@ -273,7 +315,7 @@ def main() -> None:
                 score = lock.initialize(frame, first)
                 locked = True
                 if known_db and score.face_result.embedding is not None:
-                    recognized_name, recognized_score = known_db.match(score.face_result.embedding)
+                    recognized_name, recognized_score = known_db.match(score.face_result.embedding, threshold=args.face_match_threshold)
                 print("manual lock initialized")
 
             if not locked and args.auto_lock and not args.no_auto_lock and last_best_guess is not None and should_auto_lock(last_best_guess, args):
@@ -318,6 +360,10 @@ def main() -> None:
                     body=score.body_vector,
                     geometry=score.geometry_result.vector,
                     silhouette=score.silhouette_vector,
+                    threshold=args.body_match_threshold,
+                    margin=args.body_match_margin,
+                    min_known_people=args.body_min_known_people,
+                    allow_single_person=args.allow_single_body_match,
                 )
                 body_name, body_score = bm.name, bm.score
             event.update(

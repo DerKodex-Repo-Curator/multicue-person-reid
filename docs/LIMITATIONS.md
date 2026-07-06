@@ -64,3 +64,10 @@ A good claim is:
 Avoid claiming:
 
 > Guaranteed identity recognition from distant CCTV footage.
+
+
+## One-person databases and false positives
+
+A body/ReID database with one known person cannot prove that every detected person is that identity. It only knows one positive class and has no strong negative examples. Without open-set thresholds, nearest-neighbor matching will always prefer the only known identity.
+
+The project handles this by defaulting body-only identity to conservative mode. Body features are still useful for continuity, but a clear face should carry more identity weight whenever available. More enrolled people can improve relative discrimination, but it does not solve open-set recognition by itself; unknown people still need to be rejected by score and margin thresholds.

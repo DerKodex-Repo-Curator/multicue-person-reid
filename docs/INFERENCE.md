@@ -136,3 +136,29 @@ A good face match is strong evidence. A body/ReID match is weaker and should be 
 ## Overlay layout note
 
 The overlay defaults to `--font-scale 1.6`, but panels are compact and width-clamped so long status lines are shortened instead of spilling outside the camera window. If text still feels large on a nearby display, use `--font-scale 1.4`; if the window itself is too large, combine it with `--display-scale 0.8`.
+
+
+## Open-set matching and why body-only labels are conservative
+
+The system is not a closed-set classifier. In real use, many visible people may not be enrolled. If matching simply returns the nearest known body profile, then a one-person database will label almost everyone as that one person.
+
+Current inference therefore uses open-set rejection:
+
+- Face matching can directly label a person when the score clears `--face-match-threshold`.
+- Body/ReID matching uses a higher `--body-match-threshold`.
+- Body/ReID matching also uses `--body-match-margin` when multiple people are enrolled, so the best match must clearly beat the runner-up.
+- By default, body-only labels require at least `--body-min-known-people 2`. With only one enrolled person, body scores are shown for debugging but are not trusted as identity.
+- Face has priority over body when both exist. If face and body disagree, the UI marks a conflict and displays the face-preferred result.
+
+Useful controls:
+
+```bash
+--face-match-threshold 0.46
+--face-match-margin 0.03
+--body-match-threshold 0.82
+--body-match-margin 0.08
+--body-min-known-people 2
+--allow-single-body-match
+```
+
+`--allow-single-body-match` is for controlled demos only. It makes body-only identity more permissive and can increase false positives.

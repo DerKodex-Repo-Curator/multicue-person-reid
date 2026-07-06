@@ -143,3 +143,15 @@ The current repository line intentionally prioritizes Apple Silicon/macOS perfor
 - CPU fallback remains available for stability.
 
 Platform-agnostic cleanup is a later priority.
+
+
+## Identity priority
+
+The current priority order is:
+
+1. Face match: strongest identity cue when the face is usable.
+2. Face + body agreement: strongest practical state because body corroborates face.
+3. Body/ReID-only: conservative, mainly for continuity or controlled same-session demos.
+4. Tracker/box continuity: useful for following a chosen target, not proof of identity.
+
+This is why manual lock is optional. YOLO finds candidates immediately, face/body databases score them, and open-set rejection decides whether a known-person label is allowed. Locking is only a focus tool for one target.
