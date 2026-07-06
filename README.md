@@ -283,3 +283,14 @@ A defensible claim is:
 > Multi-cue person tracking and re-identification for low-resolution camera footage, using face recognition when available and body/geometry cues for continuity.
 
 Avoid claiming guaranteed identity from distant CCTV frames.
+
+## UI and runtime tuning
+
+## Overlay style update
+
+The camera HUD now uses a thinner text style over translucent black cards. The intended default remains `--font-scale 1.6`, but the overlay renderer clamps individual text elements smaller than earlier builds so labels and debug panels do not dominate the camera feed. Use `--font-scale 1.4` for nearby desktop debugging and `--display-scale 0.8` if the preview window itself is too large.
+
+## Ultralytics precision flag update
+
+The deprecated Ultralytics `half` inference argument is no longer passed during normal runs. The `--half` CLI option is kept only as a compatibility no-op so older commands do not break. Use `--quantize` to request quantized inference when the installed Ultralytics backend supports it; unsupported `quantize` requests are retried without quantization.
+

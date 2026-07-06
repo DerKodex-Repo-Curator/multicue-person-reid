@@ -43,6 +43,7 @@ def build_detector(cfg: dict, use_pose: bool, args):
         device=args.device,
         imgsz=args.imgsz,
         half=args.half,
+        quantize=args.quantize,
     )
     if use_pose:
         return PosePersonDetector(weights=cfg["model"].get("pose_weights", "yolov8n-pose.pt"), **common)
@@ -151,7 +152,8 @@ def main() -> None:
     parser.add_argument("--no-pose", action="store_true", help="Disable YOLO pose for higher FPS.")
     parser.add_argument("--device", default="auto", help="YOLO device: auto, mps, cpu, cuda. On Apple Silicon, auto prefers mps.")
     parser.add_argument("--imgsz", type=int, default=416, help="YOLO inference image size. 320/416 = faster, 640 = more accurate.")
-    parser.add_argument("--half", action="store_true", help="Use half precision for YOLO when supported. Usually useful on GPU, ignored on CPU.")
+    parser.add_argument("--half", action="store_true", help="Deprecated compatibility flag; ignored to avoid Ultralytics 'half' deprecation warnings. Use --quantize when supported.")
+    parser.add_argument("--quantize", action="store_true", help="Request Ultralytics quantized inference when supported by the installed version/backend.")
     parser.add_argument("--tracker", default="bytetrack.yaml", help="Ultralytics tracker YAML, e.g. bytetrack.yaml or botsort.yaml.")
     parser.add_argument("--face-provider", default="auto", choices=["auto", "cpu", "coreml"], help="InsightFace ONNX provider preference.")
     parser.add_argument("--face-det-size", type=int, default=320, help="InsightFace detector size. 320 is faster; 640 is better for small faces.")

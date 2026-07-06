@@ -56,8 +56,8 @@ def readable_label(
     """Draw a high-contrast label that fits inside the image bounds."""
     font = cv2.FONT_HERSHEY_SIMPLEX
     H, W = img.shape[:2]
-    scale = min(max(0.42, scale), 1.15)
-    thickness = max(1, min(2, int(thickness)))
+    scale = min(max(0.36, scale), 1.00)
+    thickness = max(1, min(1, int(thickness)))
     x = max(0, min(W - 8, int(x)))
     max_width = max(40, W - x - 8)
     text, scale = _fit_text(text, font, scale, thickness, max_width - int(16 * scale))
@@ -69,7 +69,9 @@ def readable_label(
     y = max(th + 2 * pad_y + baseline + 2, min(H - 2, int(y)))
     x2 = min(W - 1, x + tw + 2 * pad_x)
     y1 = max(0, y - th - 2 * pad_y - baseline)
-    cv2.rectangle(img, (x, y1), (x2, y), bg, -1)
+    overlay = img.copy()
+    cv2.rectangle(overlay, (x, y1), (x2, y), bg, -1)
+    cv2.addWeighted(overlay, 0.48, img, 0.52, 0, img)
     cv2.putText(img, text, (x + pad_x, y - pad_y - baseline), font, scale, fg, thickness, cv2.LINE_AA)
 
 
@@ -86,7 +88,7 @@ def draw_meter(
     font = cv2.FONT_HERSHEY_SIMPLEX
     h = max(18, int(24 * scale))
     text = f"{label}: {_clean(value)}"
-    cv2.putText(img, text, (x, y + h - 6), font, scale, (255, 255, 255), 2, cv2.LINE_AA)
+    cv2.putText(img, text, (x, y + h - 6), font, scale, (240, 240, 240), 1, cv2.LINE_AA)
     bar_x = x + int(150 * scale)
     bar_w = max(60, w - int(160 * scale))
     bar_y = y + 4
@@ -123,13 +125,13 @@ def draw_debug_panel(
 
     overlay = img.copy()
     cv2.rectangle(overlay, (x0, y0), (x1, y1), (0, 0, 0), -1)
-    cv2.addWeighted(overlay, 0.55, img, 0.45, 0, img)
-    cv2.rectangle(img, (x0, y0), (x1, y1), (255, 255, 255), 1)
+    cv2.addWeighted(overlay, 0.42, img, 0.58, 0, img)
+    cv2.rectangle(img, (x0, y0), (x1, y1), (140, 140, 140), 1)
 
     font = cv2.FONT_HERSHEY_SIMPLEX
     y = y0 + int(18 * scale)
     title = "FOCUS LOCK" if locked else "AUTO-ID"
-    cv2.putText(img, title, (x0 + 8, y), font, scale, (255, 255, 255), 2, cv2.LINE_AA)
+    cv2.putText(img, title, (x0 + 8, y), font, scale, (250, 250, 250), 1, cv2.LINE_AA)
     y += row_h
     info = f"f {frame_idx} | det {detections}"
     if fps is not None:
@@ -171,4 +173,4 @@ def draw_debug_panel(
             y += row_h
 
     help_text = "L focus | R reset | S save | D debug | Q quit"
-    readable_label(img, help_text, 14, H - 12, scale=max(0.55, scale * 0.72), thickness=1)
+    readable_label(img, help_text, 14, H - 12, scale=max(0.42, scale * 0.58), thickness=1)

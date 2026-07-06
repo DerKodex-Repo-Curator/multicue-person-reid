@@ -288,7 +288,7 @@ def _quality_check(
     return UnifiedQuality(True, f"good sample: {bucket_reason}", **base), body, geom.vector, sil, combo
 
 
-def _rect(img, x1, y1, x2, y2, alpha=0.50):
+def _rect(img, x1, y1, x2, y2, alpha=0.36):
     h, w = img.shape[:2]
     x1, x2 = max(0, x1), min(w, x2)
     y1, y2 = max(0, y1), min(h, y2)
@@ -299,14 +299,14 @@ def _rect(img, x1, y1, x2, y2, alpha=0.50):
     cv2.addWeighted(overlay, alpha, roi, 1.0 - alpha, 0, dst=roi)
 
 
-def _text(img, text, xy, scale, color=(255,255,255), thickness=4):
-    cv2.putText(img, text, xy, cv2.FONT_HERSHEY_SIMPLEX, scale, (0,0,0), thickness+5, cv2.LINE_AA)
-    cv2.putText(img, text, xy, cv2.FONT_HERSHEY_SIMPLEX, scale, color, thickness, cv2.LINE_AA)
+def _text(img, text, xy, scale, color=(255,255,255), thickness=1):
+    # Thin HUD text over translucent cards. No heavy stroke: black cards provide contrast.
+    cv2.putText(img, text, xy, cv2.FONT_HERSHEY_SIMPLEX, scale, color, max(1, thickness), cv2.LINE_AA)
 
 
 def _bar(img, x, y, w, h, frac, color):
     frac=max(0,min(1,frac))
-    cv2.rectangle(img,(x,y),(x+w,y+h),(70,70,70),2)
+    cv2.rectangle(img,(x,y),(x+w,y+h),(90,90,90),1)
     cv2.rectangle(img,(x,y),(x+int(w*frac),y+h),color,-1)
 
 
@@ -349,19 +349,19 @@ def _draw_overlay(frame, *, person, saved, samples, bucket_target=None, max_samp
     dominant and clamps panel/text sizes based on the actual frame dimensions.
     """
     h, w = frame.shape[:2]
-    fs = min(max(0.75, font_scale), 1.6)
-    title = max(0.75, fs * 0.68)
-    small = max(0.56, fs * 0.50)
-    tiny = max(0.48, fs * 0.42)
-    pad = max(8, int(8 * fs))
-    line = max(20, int(22 * fs))
+    fs = min(max(0.70, font_scale), 1.6)
+    title = max(0.58, fs * 0.56)
+    small = max(0.48, fs * 0.43)
+    tiny = max(0.40, fs * 0.35)
+    pad = max(7, int(7 * fs))
+    line = max(17, int(18 * fs))
     target = _target_each(samples, bucket_target)
     need = _next_needed(counts, samples, bucket_target)
 
     # Top-left status card, compact and width-clamped.
-    card_w = min(w - 24, max(360, int(w * 0.55)))
-    card_h = min(max(128, int(122 * fs)), max(116, h // 3))
-    _rect(frame, 12, 12, 12 + card_w, 12 + card_h, 0.42)
+    card_w = min(w - 24, max(330, int(w * 0.50)))
+    card_h = min(max(112, int(104 * fs)), max(104, h // 3))
+    _rect(frame, 12, 12, 12 + card_w, 12 + card_h, 0.36)
     y = 12 + pad + int(19 * fs)
     max_label = f"/{max_samples}" if max_samples else ""
     max_chars = max(22, int(card_w / max(10, 17 * title)))
@@ -388,16 +388,16 @@ def _draw_overlay(frame, *, person, saved, samples, bucket_target=None, max_samp
             draw_pose(frame, q.detection, radius=max(3, int(3 * fs)), thickness=max(2, int(2 * fs)))
 
     # Bottom-right bucket card. Keep it small enough to never spill past frame.
-    panel_w = min(max(300, int(290 * fs)), w - 24)
-    row_h = max(20, int(21 * fs))
+    panel_w = min(max(260, int(248 * fs)), w - 24)
+    row_h = max(17, int(18 * fs))
     panel_h = min(h - 24, pad * 2 + row_h * (len(BUCKETS) + 1))
     bx = max(12, w - panel_w - 12)
     by = max(12, h - panel_h - 12)
-    _rect(frame, bx, by, bx + panel_w, by + panel_h, 0.46)
+    _rect(frame, bx, by, bx + panel_w, by + panel_h, 0.38)
     yy = by + pad + int(15 * fs)
     _text(frame, "Buckets", (bx + pad, yy), small, (255, 255, 255), 2)
     yy += row_h
-    label_w = int(110 * fs)
+    label_w = int(86 * fs)
     bar_x = bx + pad + label_w
     bar_w = max(70, panel_w - label_w - pad * 2)
     for b in BUCKETS:
@@ -406,7 +406,7 @@ def _draw_overlay(frame, *, person, saved, samples, bucket_target=None, max_samp
         color = (100, 255, 100) if ok else (90, 210, 255)
         label = b.upper().replace('TURN_', '')[:6]
         _text(frame, f"{label} {count}/{target}", (bx + pad, yy), tiny, color, 2)
-        _bar(frame, bar_x, yy - int(12 * fs), bar_w, max(8, int(9 * fs)), count / max(target, 1), color)
+        _bar(frame, bar_x, yy - int(10 * fs), bar_w, max(6, int(7 * fs)), count / max(target, 1), color)
         yy += row_h
 
     ctrl = "SPACE save | M mute | Q quit"

@@ -25,6 +25,7 @@ class PosePersonDetector:
         device: str = "auto",
         imgsz: int = 416,
         half: bool = False,
+        quantize: bool = False,
     ) -> None:
         from .apple_runtime import select_yolo_device
 
@@ -33,8 +34,21 @@ class PosePersonDetector:
         self.tracker = tracker
         self.device = select_yolo_device(device)
         self.imgsz = imgsz
-        self.half = half and self.device != "cpu"
+        # `half` is kept for CLI/backward compatibility only. Newer Ultralytics
+        # emits a deprecation warning for the `half` kwarg, so the project no
+        # longer passes it by default. Use `quantize` when supported.
+        self.half = False
+        self.quantize = bool(quantize) and self.device != "cpu"
         self._lap_warning_printed = False
+
+    def _infer_kwargs(self, *, tracking: bool = False) -> dict:
+        """Build Ultralytics inference kwargs without deprecated keys."""
+        kwargs = dict(conf=self.conf, device=self.device, imgsz=self.imgsz, verbose=False)
+        if tracking:
+            kwargs.update(persist=True, tracker=self.tracker)
+        if self.quantize:
+            kwargs["quantize"] = True
+        return kwargs
 
     def track(self, frame: np.ndarray) -> list[PoseDetection]:
         """Return pose detections using Ultralytics tracking when available.
@@ -44,7 +58,15 @@ class PosePersonDetector:
         of crashing.
         """
         try:
-            result = self.model.track(frame, conf=self.conf, persist=True, tracker=self.tracker, device=self.device, imgsz=self.imgsz, half=self.half, verbose=False)[0]
+            kwargs = self._infer_kwargs(tracking=True)
+            try:
+                result = self.model.track(frame, **kwargs)[0]
+            except Exception as exc:
+                if self.quantize and "quantize" in kwargs and "quantize" in str(exc).lower():
+                    kwargs.pop("quantize", None)
+                    result = self.model.track(frame, **kwargs)[0]
+                else:
+                    raise
             return self._parse(result)
         except ModuleNotFoundError as exc:
             if exc.name != "lap":
@@ -56,7 +78,15 @@ class PosePersonDetector:
             return self.detect(frame)
 
     def detect(self, frame: np.ndarray) -> list[PoseDetection]:
-        result = self.model.predict(frame, conf=self.conf, device=self.device, imgsz=self.imgsz, half=self.half, verbose=False)[0]
+        kwargs = self._infer_kwargs()
+        try:
+            result = self.model.predict(frame, **kwargs)[0]
+        except Exception as exc:
+            if self.quantize and "quantize" in kwargs and "quantize" in str(exc).lower():
+                kwargs.pop("quantize", None)
+                result = self.model.predict(frame, **kwargs)[0]
+            else:
+                raise
         return self._parse(result)
 
     def _parse(self, result) -> list[PoseDetection]:
