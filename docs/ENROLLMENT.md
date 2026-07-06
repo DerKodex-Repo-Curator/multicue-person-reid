@@ -119,6 +119,17 @@ Useful tuning flags:
 --delay 0.45
 ```
 
+
+## Overlay text size
+
+The default enrollment overlay is now:
+
+```bash
+--font-scale 1.6
+```
+
+This is the intended balance: large enough to read from a few steps away, but not so large that the HUD covers the camera feed. Try `--font-scale 1.4` for nearby desktop use or `--font-scale 1.8` only when the display is genuinely hard to read from far away.
+
 ## Sound prompts
 
 Sound prompts are useful when standing far from the screen.

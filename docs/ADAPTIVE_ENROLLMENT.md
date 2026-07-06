@@ -86,6 +86,19 @@ More samples can hurt when they add noise:
 - duplicate frames
 - mislabeled turn direction
 
+
+## Readable but sane UI defaults
+
+Adaptive enrollment defaults to `--font-scale 1.6`. This is deliberately lower than earlier oversized HUD builds. The goal is to see missing buckets from a distance while keeping the camera feed usable.
+
+Use:
+
+```bash
+--font-scale 1.4   # smaller, nearby desktop testing
+--font-scale 1.6   # default
+--font-scale 1.8   # larger, far display only
+```
+
 ## Suggested presets
 
 Fast smoke test:

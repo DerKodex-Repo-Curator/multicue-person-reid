@@ -254,7 +254,7 @@ def _bar(img, x, y, w, h, frac, color):
 
 def _draw_overlay(frame, *, person, saved, samples, bucket_target=None, max_samples=None, q: UnifiedQuality|None, counts, start_remaining, font_scale):
     h,w=frame.shape[:2]
-    fs=max(1.4,font_scale)
+    fs = max(0.9, font_scale)
     small=max(1.05,fs*0.72)
     pad=int(18*fs)
     line=int(46*fs)
@@ -313,7 +313,7 @@ def main() -> None:
     parser.add_argument("--start-delay",type=float,default=6.0)
     parser.add_argument("--delay",type=float,default=0.45)
     parser.add_argument("--clear-existing",action="store_true")
-    parser.add_argument("--font-scale",type=float,default=2.6)
+    parser.add_argument("--font-scale", type=float, default=1.6, help="Overlay text size. Default 1.6 balances far-distance readability with uncluttered video.")
     parser.add_argument("--display-scale",type=float,default=1.0)
     parser.add_argument("--min-body-height",type=int,default=240)
     parser.add_argument("--min-face-size",type=int,default=46)

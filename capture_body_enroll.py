@@ -200,7 +200,7 @@ def _next_needed(bucket_counts: dict[str, int], samples: int) -> tuple[str, str]
 
 def _draw_overlay(frame, *, person, saved, samples, q: BodyQuality | None, bucket_counts, start_remaining, font_scale):
     h, w = frame.shape[:2]
-    fs = max(1.0, font_scale)
+    fs = max(0.9, font_scale)
     small = max(0.85, fs * 0.72)
     pad = int(16 * fs)
     line = int(42 * fs)
@@ -260,7 +260,7 @@ def main() -> None:
     parser.add_argument("--start-delay", type=float, default=6.0)
     parser.add_argument("--delay", type=float, default=0.65)
     parser.add_argument("--clear-existing", action="store_true")
-    parser.add_argument("--font-scale", type=float, default=2.4)
+    parser.add_argument("--font-scale", type=float, default=1.6, help="Overlay text size. Default 1.6 balances far-distance readability with uncluttered video.")
     parser.add_argument("--display-scale", type=float, default=1.0)
     parser.add_argument("--min-body-height", type=int, default=260)
     parser.add_argument("--min-sharpness", type=float, default=35.0)

@@ -98,13 +98,15 @@ uv run run_camera.py --camera 0 --known-db outputs/known_faces.npz --known-body-
 
 ## Overlay readability
 
-If text is too small:
+The default live overlay is:
 
 ```bash
---font-scale 1.8
+--font-scale 1.6
 ```
 
-If the display window is too large:
+That is the recommended baseline: readable from a distance while avoiding the oversized HUD problem. For nearby debugging, try `--font-scale 1.4`. For farther screens, try `--font-scale 1.8`.
+
+If the display window is too large, reduce the window instead of enlarging the overlay further:
 
 ```bash
 --display-scale 0.75

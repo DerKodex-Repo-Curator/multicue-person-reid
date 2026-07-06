@@ -136,7 +136,7 @@ def main() -> None:
     parser.add_argument("--threaded-camera", action=argparse.BooleanOptionalAction, default=True, help="Read camera frames on a background thread to keep UI responsive during ML inference.")
     parser.add_argument("--auto-face-threshold", type=float, default=0.48, help="Face score required for automatic lock.")
     parser.add_argument("--auto-body-threshold", type=float, default=0.70, help="Body/ReID score required for automatic lock.")
-    parser.add_argument("--font-scale", type=float, default=1.4, help="Scale overlay text. Try 1.8 or 2.2 if text is small.")
+    parser.add_argument("--font-scale", type=float, default=1.6, help="Scale overlay text. Default 1.6 balances far-distance readability with uncluttered video.")
     parser.add_argument("--display-scale", type=float, default=1.0, help="Scale displayed window frame. Example: 0.75 on small screens.")
     parser.add_argument("--no-debug-panel", action="store_true", help="Hide the right-side debug dashboard.")
     args = parser.parse_args()

@@ -66,7 +66,7 @@ If it says CPU, PyTorch is not exposing MPS in that environment.
 Use:
 
 ```bash
---font-scale 1.8
+--font-scale 1.6
 ```
 
 If the window is too large:
@@ -113,7 +113,7 @@ Left/right now depends on estimated yaw, not screen position. Turn your actual h
 Try making the UI easier to read:
 
 ```bash
---font-scale 2.4
+--font-scale 1.8
 ```
 
 ## InsightFace downloads model on first run
@@ -160,3 +160,14 @@ Try a more responsive test:
 ```
 
 This is slower but easier to debug.
+
+
+## Overlay text is too large
+
+The sane default is `--font-scale 1.6`. Earlier builds used larger defaults that could cover too much of the camera feed. If the overlay is still too large, use:
+
+```bash
+--font-scale 1.4
+```
+
+If you are far from the display, prefer `--font-scale 1.6` first and increase to `1.8` only if needed.

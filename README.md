@@ -85,6 +85,8 @@ uv run capture_unified_enroll.py \
   --start-delay 6
 ```
 
+Default overlay text size is `--font-scale 1.6`. It is intended to be readable from a distance without covering the camera view. Increase slightly only if your display/camera distance needs it.
+
 The unified flow captures both modalities from the same live pass:
 
 ```text
@@ -199,7 +201,7 @@ Locking means “follow this chosen target across future frames.” It does **no
 --no-auto-identify     # disable automatic known-person matching
 --threaded-camera      # default: keep capture responsive during heavy inference
 --no-threaded-camera   # disable threaded capture for debugging
---font-scale 1.8       # larger overlay text
+--font-scale 1.6       # default readable overlay size; increase only if needed
 --display-scale 0.75   # smaller output window
 ```
 

@@ -286,7 +286,7 @@ def main() -> None:
     parser.add_argument("--max-brightness", type=float, default=225.0, help="Maximum face brightness.")
     parser.add_argument("--duplicate-threshold", type=float, default=0.992, help="Skip samples with embedding similarity above this threshold.")
     parser.add_argument("--no-balance-buckets", action="store_true", help="Do not balance center/left/right/close/far samples.")
-    parser.add_argument("--font-scale", type=float, default=2.0, help="Overlay text size.")
+    parser.add_argument("--font-scale", type=float, default=1.6, help="Overlay text size. Default 1.6 balances far-distance readability with uncluttered video.")
     parser.add_argument("--display-scale", type=float, default=1.0, help="Scale preview window.")
     parser.add_argument("--no-sound", action="store_true", help="Disable speech/beep guidance.")
     parser.add_argument("--beep-only", action="store_true", help="Use terminal bell instead of speech.")
