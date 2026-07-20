@@ -17,3 +17,8 @@ known_people/*
 
 # Logs
 *.log
+
+# Local web application
+frontend/node_modules/
+frontend/dist/
+.face-id-data/

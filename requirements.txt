@@ -6,6 +6,11 @@ Pillow>=10.0.0
 tqdm>=4.66.0
 PyYAML>=6.0
 matplotlib>=3.8.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.12
+platformdirs>=4.3.0
+pydantic>=2.9.0
 
 # Real face embeddings. The code falls back to OpenCV if unavailable, but InsightFace is recommended.
 insightface>=0.7.3
