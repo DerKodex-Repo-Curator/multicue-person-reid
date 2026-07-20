@@ -23,6 +23,24 @@ Main capabilities:
 - Uses PyTorch MPS for YOLO on Apple Silicon when available.
 - Uses PyTorch MPS for YOLO on Apple Silicon; InsightFace `auto` prefers fixed-shape CoreML on Apple Silicon and falls back to CPU if CoreML fails. Benchmark CPU vs CoreML on your exact camera before making claims.
 
+## Local web demo
+
+The repository now includes a local-only React interface for profile management, guided enrollment, portable profile import/export, and live inference. Native Python remains responsible for the camera and ML models so the fastest available local backend can be used.
+
+```bash
+# Python service
+uv run python -m face_yolo_identity.demo_server
+
+# Frontend development (in another terminal)
+cd frontend
+npm install
+npm run dev
+```
+
+For a single production process, build the frontend first with `npm run build`, then start the Python service. It serves the generated UI at `http://127.0.0.1:8000`.
+
+Profiles are stored in the operating system's application-data directory. Set `FACE_ID_DATA_DIR` to override that root. Profile images and embeddings remain local; the browser only holds transient UI state.
+
 ## Repository layout
 
 ```text
@@ -305,4 +323,3 @@ The camera HUD now uses a thinner text style over translucent black cards. The i
 ## Ultralytics precision flag update
 
 The deprecated Ultralytics `half` inference argument is no longer passed during normal runs. The `--half` CLI option is kept only as a compatibility no-op so older commands do not break. Use `--quantize` to request quantized inference when the installed Ultralytics backend supports it; unsupported `quantize` requests are retried without quantization.
-
