@@ -69,4 +69,6 @@ class KnownFaceDB:
 def save_db(path: str | Path, names: list[str], embeddings: list[np.ndarray]) -> None:
     arr = np.vstack(embeddings).astype(np.float32) if embeddings else np.empty((0, 512), dtype=np.float32)
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(path, names=np.array(names, dtype=object), embeddings=arr)
+    # Unicode arrays keep profile bundles loadable with allow_pickle=False.
+    width = max((len(str(name)) for name in names), default=1)
+    np.savez_compressed(path, names=np.array(names, dtype=f"<U{width}"), embeddings=arr)

@@ -169,4 +169,5 @@ def save_body_db(path: str | Path, names: list[str], body: list[np.ndarray], geo
     geom_arr = _stack_or_empty(geometry, len(geometry[0]) if geometry else 0)
     sil_arr = _stack_or_empty(silhouette, len(silhouette[0]) if silhouette else 0)
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(path, names=np.array(names, dtype=object), body=body_arr, geometry=geom_arr, silhouette=sil_arr)
+    width = max((len(str(name)) for name in names), default=1)
+    np.savez_compressed(path, names=np.array(names, dtype=f"<U{width}"), body=body_arr, geometry=geom_arr, silhouette=sil_arr)
