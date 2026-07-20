@@ -16,6 +16,11 @@ class RuntimeInfo:
     torch_mps_available: bool
     onnx_providers: list[str]
     face_providers: list[FaceProvider]
+    accelerator: str = "cpu"
+    accelerator_label: str = "CPU"
+    torch_cuda_available: bool = False
+    torch_hip_version: str | None = None
+    torch_cuda_version: str | None = None
 
 
 def _torch_mps_available() -> bool:
@@ -26,12 +31,30 @@ def _torch_mps_available() -> bool:
         return False
 
 
+def _torch_accelerator() -> tuple[bool, str | None, str | None]:
+    try:
+        import torch  # type: ignore
+
+        return (
+            bool(torch.cuda.is_available()),
+            str(torch.version.hip) if torch.version.hip else None,
+            str(torch.version.cuda) if torch.version.cuda else None,
+        )
+    except Exception:
+        return False, None, None
+
+
 def select_yolo_device(requested: str = "auto") -> str:
     requested = (requested or "auto").lower()
     if requested != "auto":
         return requested
     if _torch_mps_available():
         return "mps"
+    cuda_available, _, _ = _torch_accelerator()
+    if cuda_available:
+        # PyTorch intentionally exposes both NVIDIA CUDA and AMD ROCm through
+        # the `cuda` device API. `torch.version.hip` distinguishes AMD below.
+        return "cuda"
     return "cpu"
 
 
@@ -75,15 +98,34 @@ def select_face_providers(requested: str = "auto") -> list[FaceProvider]:
             ),
             "CPUExecutionProvider",
         ]
+    if requested in {"auto", "cuda"} and "CUDAExecutionProvider" in providers:
+        return ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    if requested in {"auto", "migraphx"} and "MIGraphXExecutionProvider" in providers:
+        return ["MIGraphXExecutionProvider", "CPUExecutionProvider"]
     return ["CPUExecutionProvider"]
 
 
 def runtime_info(requested_device: str = "auto", requested_face_provider: str = "auto") -> RuntimeInfo:
+    cuda_available, hip_version, cuda_version = _torch_accelerator()
+    yolo_device = select_yolo_device(requested_device)
+    if yolo_device == "mps":
+        accelerator, label = "apple_mps", "Apple MPS"
+    elif yolo_device == "cuda" and hip_version:
+        accelerator, label = "amd_rocm", "AMD ROCm"
+    elif yolo_device == "cuda":
+        accelerator, label = "nvidia_cuda", "NVIDIA CUDA"
+    else:
+        accelerator, label = "cpu", "CPU"
     return RuntimeInfo(
         requested_device=requested_device,
-        yolo_device=select_yolo_device(requested_device),
+        yolo_device=yolo_device,
         is_apple_silicon=(platform.system() == "Darwin" and platform.machine() == "arm64"),
         torch_mps_available=_torch_mps_available(),
         onnx_providers=available_onnx_providers(),
         face_providers=select_face_providers(requested_face_provider),
+        accelerator=accelerator,
+        accelerator_label=label,
+        torch_cuda_available=cuda_available,
+        torch_hip_version=hip_version,
+        torch_cuda_version=cuda_version,
     )

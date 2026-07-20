@@ -32,6 +32,13 @@ class FaceEmbedder:
             for item in providers
         )
 
+    @staticmethod
+    def _uses_accelerator(providers: list[Any]) -> bool:
+        return any(
+            (item[0] if isinstance(item, tuple) else item) != "CPUExecutionProvider"
+            for item in providers
+        )
+
     def __init__(self, provider: str = "auto", det_size: tuple[int, int] = (320, 320)) -> None:
         self.backend = "opencv-fallback"
         self.app = None
@@ -59,7 +66,14 @@ class FaceEmbedder:
                     self.providers = ["CPUExecutionProvider"]
                     self.app = FaceAnalysis(name="buffalo_l", providers=self.providers)
             else:
-                self.app = FaceAnalysis(name="buffalo_l", providers=self.providers)
+                try:
+                    self.app = FaceAnalysis(name="buffalo_l", providers=self.providers)
+                except Exception as exc:
+                    if not self._uses_accelerator(self.providers):
+                        raise
+                    print(f"InsightFace accelerator initialization failed; using CPU: {exc}")
+                    self.providers = ["CPUExecutionProvider"]
+                    self.app = FaceAnalysis(name="buffalo_l", providers=self.providers)
             # 320 is much faster than 640 for live webcam use. Raise with
             # --face-det-size 640 if small/far faces are more important than FPS.
             self.app.prepare(ctx_id=0, det_size=det_size)
@@ -98,8 +112,8 @@ class FaceEmbedder:
             try:
                 faces = self.app.get(bgr_image)
             except Exception as exc:
-                if self._uses_coreml(self.providers):
-                    print(f"InsightFace CoreML runtime error: {exc}")
+                if self._uses_accelerator(self.providers):
+                    print(f"InsightFace accelerator runtime error: {exc}")
                     if self._reinitialize_insightface_cpu():
                         faces = self.app.get(bgr_image) if self.app is not None else []
                     else:
